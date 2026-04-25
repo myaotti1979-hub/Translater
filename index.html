@@ -91,7 +91,7 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27a</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27c</span>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -187,8 +187,8 @@ let micTimer = null, pcTimer = null;
 
 // Per-source block state
 const src = {
-  mic: { el: null, lastText: '', pendingText: '', context: [], silentCount: 0, sealTimer: null },
-  pc:  { el: null, lastText: '', pendingText: '', context: [], silentCount: 0, sealTimer: null }
+  mic: { el: null, lastText: '', accText: '', transVer: 0, context: [], silentCount: 0, sealTimer: null },
+  pc:  { el: null, lastText: '', accText: '', transVer: 0, context: [], silentCount: 0, sealTimer: null }
 };
 
 const CHUNK_SEC = 5;
@@ -357,10 +357,10 @@ async function llamaTranslate(text, fromLang, toLang, context){
     const ctx=context.join('\n');
     prompt=`You are a real-time meeting translator (${fromName} to ${toName}).
 
-Previous sentences for context:
+Previous context for reference:
 ${ctx}
 
-Translate ONLY the following sentence. Use the context above to resolve pronouns (he/she/they/it) and references. Do NOT translate the context sentences. Output ONLY the translation of the last sentence.
+Translate ALL of the following text faithfully. Do NOT summarize or omit anything. Use the context above only to understand pronouns and references. Do NOT translate the context. Output ONLY the translation.
 
 ${text}`;
   } else {
@@ -404,57 +404,20 @@ function splitSentences(text){
   return {sentences,remaining};
 }
 
-// ══════ Block: 1文1ブロック + pending翻訳 ══════
-function addSentenceBlock(sType, sentence, pair){
-  const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
+// ══════ Block: LIVEブロック蓄積 + リアルタイム翻訳更新 ══════
+// テキストを溜めながら翻訳を毎チャンク更新。まとまったら確定。
+const MIN_SEAL=80;   // 句読点あり＆この文字数以上で確定
+const MAX_SEAL=200;  // この文字数を超えたら強制確定
+
+function handleChunk(sType, text, pair){
   const s=src[sType];
-  // Remove live block if exists (pending becomes sealed)
-  if(s.el){s.el.remove();s.el=null;}
-
-  const el=document.createElement('div');
-  el.className='block';
-  const icon=sType==='pc'?'🖥':'🎙';
-  el.innerHTML=`
-    <div class="block-head">
-      <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
-      <span class="block-time">${timeStr()}</span>
-    </div>
-    <div class="block-ja">翻訳中…</div>
-    <div class="block-en">${escapeHtml(sentence)}</div>`;
-  document.getElementById('feed').appendChild(el);
-  scrollDown();
-
-  const idx=transcript.length;
-  transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:sentence,ja:''});
-
-  if(transMode==='ja-only'){
-    el.querySelector('.block-ja').textContent=sentence;
-    el.querySelector('.block-en').style.display='none';
-    transcript[idx].ja=sentence;
-  } else {
-    const ctx=s.context.slice(-3);
-    llamaTranslate(sentence,pair.from,pair.to,ctx).then(t=>{
-      const ja=el.querySelector('.block-ja');
-      if(ja) ja.textContent=t;
-      transcript[idx].ja=t;
-      scrollDown();
-    }).catch(()=>{
-      const ja=el.querySelector('.block-ja');
-      if(ja) ja.textContent='⚠';
-    });
-  }
-  s.context.push(sentence);
-  if(s.context.length>5) s.context.shift();
-}
-
-// LIVEブロック: 未完成文もリアルタイム翻訳する
-function showPending(sType, text, pair){
-  const s=src[sType];
-  if(!text){
-    if(s.el){s.el.remove();s.el=null;}
-    return;
-  }
   const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
+
+  // テキスト蓄積
+  s.accText=(s.accText||'')+' '+text;
+  s.accText=s.accText.trim();
+
+  // LIVEブロックがなければ作成
   if(!s.el){
     s.el=document.createElement('div');
     s.el.className='block live';
@@ -469,36 +432,82 @@ function showPending(sType, text, pair){
       <div class="block-en"></div>`;
     document.getElementById('feed').appendChild(s.el);
   }
+
+  // 原文を即表示
   const enEl=s.el.querySelector('.block-en');
   if(transMode==='ja-only'){
-    const jaEl=s.el.querySelector('.block-ja');
-    if(jaEl) jaEl.textContent=text;
     if(enEl) enEl.style.display='none';
+    const jaEl=s.el.querySelector('.block-ja');
+    if(jaEl) jaEl.textContent=s.accText;
   } else {
-    if(enEl){enEl.style.display='';enEl.textContent=text;}
-    if(pair){
-      const ctx=s.context.slice(-3);
-      llamaTranslate(text,pair.from,pair.to,ctx).then(t=>{
-        if(!s.el) return;
-        const jaEl=s.el.querySelector('.block-ja');
-        if(jaEl) jaEl.textContent=t;
-        scrollDown();
-      }).catch(()=>{});
-    }
+    if(enEl){enEl.style.display='';enEl.textContent=s.accText;}
+
+    // 翻訳リクエスト（バージョン管理で古い結果を捨てる）
+    s.transVer=(s.transVer||0)+1;
+    const ver=s.transVer;
+    const ctx=s.context.slice(-3);
+    llamaTranslate(s.accText,pair.from,pair.to,ctx).then(t=>{
+      if(ver!==s.transVer||!s.el) return; // 古い結果はスキップ
+      const jaEl=s.el.querySelector('.block-ja');
+      if(jaEl) jaEl.textContent=t;
+      scrollDown();
+    }).catch(()=>{});
   }
   scrollDown();
+
+  // 確定判定: 十分な長さ＋句読点 or 最大長超え
+  const hasEnd=/[.?!。？！]$/.test(s.accText.trim());
+  if((s.accText.length>=MIN_SEAL && hasEnd) || s.accText.length>=MAX_SEAL){
+    sealLive(sType);
+  }
+
+  // 沈黙タイマーリセット
+  clearTimeout(s.sealTimer);
+  s.sealTimer=setTimeout(()=>sealLive(sType), CHUNK_MS*2);
 }
 
-// pendingをブロック化してクリア
-function flushPending(sType){
+function sealLive(sType){
   const s=src[sType];
-  if(s.pendingText.trim()){
-    const detected=detectLang(s.pendingText);
-    const pair=getPair(detected);
-    addSentenceBlock(sType,s.pendingText.trim(),pair);
-    s.pendingText='';
+  if(!s.el||!s.accText?.trim()) return;
+
+  // LIVE → 確定
+  s.el.classList.remove('live');
+  const lb=s.el.querySelector('.block-live');if(lb)lb.remove();
+
+  const text=s.accText.trim();
+  const detected=detectLang(text);
+  const pair=getPair(detected);
+
+  // トランスクリプトに保存
+  const jaEl=s.el.querySelector('.block-ja');
+  const ja=jaEl?jaEl.textContent:'';
+  const idx=transcript.length;
+  transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:text,ja:ja});
+
+  // 最終翻訳（通し訳で品質向上）
+  if(transMode!=='ja-only'){
+    const ctx=s.context.slice(-3);
+    llamaTranslate(text,pair.from,pair.to,ctx).then(t=>{
+      const jaEl2=s.el?.querySelector('.block-ja');
+      if(jaEl2) jaEl2.textContent=t;
+      if(transcript[idx]) transcript[idx].ja=t;
+      scrollDown();
+    }).catch(()=>{});
   }
-  if(s.el){s.el.remove();s.el=null;}
+
+  // context更新
+  s.context.push(text);
+  if(s.context.length>5) s.context.shift();
+
+  // リセット
+  s.el=null;
+  s.accText='';
+  s.transVer=0;
+  clearTimeout(s.sealTimer);
+}
+
+function flushPending(sType){
+  sealLive(sType);
 }
 
 // ══════ Word Export ══════
@@ -663,31 +672,8 @@ function startCapture(stream, sType){
         const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
         const pair=getPair(detected);
 
-        // Combine pending buffer + new text, split into sentences
-        const combined=((s.pendingText||'')+' '+text).trim();
-        const {sentences,remaining}=splitSentences(combined);
-        s.pendingText=remaining;
-
-        // 完結文 → 1文1ブロック、即翻訳
-        for(const sentence of sentences){
-          addSentenceBlock(sType,sentence,pair);
-        }
-
-        // 120文字超えたら句読点なくても強制ブロック化
-        if(s.pendingText.length>120){
-          addSentenceBlock(sType,s.pendingText.trim(),pair);
-          s.pendingText='';
-          showPending(sType,'',pair);
-        } else {
-          // 未完成文 → LIVEブロックでリアルタイム翻訳表示
-          showPending(sType,remaining,pair);
-        }
-
-        // 沈黙が来たらpendingをフラッシュ
-        clearTimeout(s.sealTimer);
-        if(s.pendingText){
-          s.sealTimer=setTimeout(()=>flushPending(sType), CHUNK_MS*2);
-        }
+        // リアルタイム翻訳処理
+        handleChunk(sType,text,pair);
 
       }catch(err){
         console.error('Error:',err);
@@ -761,6 +747,7 @@ function clearAll(){
   flushPending('mic');flushPending('pc');
   transcript=[];
   src.mic.context=[];src.pc.context=[];
+  src.mic.accText='';src.pc.accText='';
   document.getElementById('feed').innerHTML='<div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>';
 }
 
