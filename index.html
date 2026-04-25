@@ -91,7 +91,7 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-26g</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27a</span>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -404,10 +404,13 @@ function splitSentences(text){
   return {sentences,remaining};
 }
 
-// ══════ Block management — 1 sentence per block ══════
+// ══════ Block: 1文1ブロック + pending翻訳 ══════
 function addSentenceBlock(sType, sentence, pair){
   const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
   const s=src[sType];
+  // Remove live block if exists (pending becomes sealed)
+  if(s.el){s.el.remove();s.el=null;}
+
   const el=document.createElement('div');
   el.className='block';
   const icon=sType==='pc'?'🖥':'🎙';
@@ -416,41 +419,36 @@ function addSentenceBlock(sType, sentence, pair){
       <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
       <span class="block-time">${timeStr()}</span>
     </div>
-    <div class="block-ja waiting">翻訳中…</div>
+    <div class="block-ja">翻訳中…</div>
     <div class="block-en">${escapeHtml(sentence)}</div>`;
   document.getElementById('feed').appendChild(el);
   scrollDown();
 
-  // Save to transcript
   const idx=transcript.length;
   transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:sentence,ja:''});
 
   if(transMode==='ja-only'){
-    el.querySelector('.block-ja').className='block-ja';
     el.querySelector('.block-ja').textContent=sentence;
     el.querySelector('.block-en').style.display='none';
     transcript[idx].ja=sentence;
   } else {
-    // Pass last 3 sentences as context for better translation
     const ctx=s.context.slice(-3);
     llamaTranslate(sentence,pair.from,pair.to,ctx).then(t=>{
       const ja=el.querySelector('.block-ja');
-      if(ja){ja.className='block-ja';ja.textContent=t;}
+      if(ja) ja.textContent=t;
       transcript[idx].ja=t;
       scrollDown();
     }).catch(()=>{
       const ja=el.querySelector('.block-ja');
-      if(ja){ja.className='block-ja';ja.textContent='⚠';}
+      if(ja) ja.textContent='⚠';
     });
   }
-
-  // Add to context buffer (keep last 5)
   s.context.push(sentence);
   if(s.context.length>5) s.context.shift();
 }
 
-// Show/update the live pending block (incomplete sentence)
-function showPending(sType, text){
+// LIVEブロック: 未完成文もリアルタイム翻訳する
+function showPending(sType, text, pair){
   const s=src[sType];
   if(!text){
     if(s.el){s.el.remove();s.el=null;}
@@ -467,23 +465,31 @@ function showPending(sType, text){
         <span class="block-live">LIVE</span>
         <span class="block-time">${timeStr()}</span>
       </div>
-      <div class="block-ja" style="color:#ffffff;font-size:14px"></div>
+      <div class="block-ja">翻訳中…</div>
       <div class="block-en"></div>`;
     document.getElementById('feed').appendChild(s.el);
   }
-  const jaEl=s.el.querySelector('.block-ja');
   const enEl=s.el.querySelector('.block-en');
   if(transMode==='ja-only'){
+    const jaEl=s.el.querySelector('.block-ja');
     if(jaEl) jaEl.textContent=text;
     if(enEl) enEl.style.display='none';
   } else {
-    if(jaEl) jaEl.textContent='…';
     if(enEl){enEl.style.display='';enEl.textContent=text;}
+    if(pair){
+      const ctx=s.context.slice(-3);
+      llamaTranslate(text,pair.from,pair.to,ctx).then(t=>{
+        if(!s.el) return;
+        const jaEl=s.el.querySelector('.block-ja');
+        if(jaEl) jaEl.textContent=t;
+        scrollDown();
+      }).catch(()=>{});
+    }
   }
   scrollDown();
 }
 
-// Flush pending text as a final block
+// pendingをブロック化してクリア
 function flushPending(sType){
   const s=src[sType];
   if(s.pendingText.trim()){
@@ -662,17 +668,24 @@ function startCapture(stream, sType){
         const {sentences,remaining}=splitSentences(combined);
         s.pendingText=remaining;
 
-        // Create a sealed block for each complete sentence
+        // 完結文 → 1文1ブロック、即翻訳
         for(const sentence of sentences){
           addSentenceBlock(sType,sentence,pair);
         }
 
-        // Show remaining fragment as live pending block
-        showPending(sType,remaining);
+        // 120文字超えたら句読点なくても強制ブロック化
+        if(s.pendingText.length>120){
+          addSentenceBlock(sType,s.pendingText.trim(),pair);
+          s.pendingText='';
+          showPending(sType,'',pair);
+        } else {
+          // 未完成文 → LIVEブロックでリアルタイム翻訳表示
+          showPending(sType,remaining,pair);
+        }
 
-        // Reset flush timer — if silence comes, flush pending
+        // 沈黙が来たらpendingをフラッシュ
         clearTimeout(s.sealTimer);
-        if(remaining){
+        if(s.pendingText){
           s.sealTimer=setTimeout(()=>flushPending(sType), CHUNK_MS*2);
         }
 
