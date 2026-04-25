@@ -90,7 +90,7 @@
 <div id="app">
   <!-- Top bar -->
   <div class="top-bar">
-    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26e</span></h1>
+    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26g</span></h1>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -186,8 +186,8 @@ let micTimer = null, pcTimer = null;
 
 // Per-source block state
 const src = {
-  mic: { el: null, text: '', jaText: '', lastText: '', pendingText: '', started: 0, silentCount: 0, sealTimer: null },
-  pc:  { el: null, text: '', jaText: '', lastText: '', pendingText: '', started: 0, silentCount: 0, sealTimer: null }
+  mic: { el: null, lastText: '', pendingText: '', context: [], silentCount: 0, sealTimer: null },
+  pc:  { el: null, lastText: '', pendingText: '', context: [], silentCount: 0, sealTimer: null }
 };
 
 const CHUNK_SEC = 5;
@@ -347,16 +347,30 @@ async function geminiTranscribe(blob, prevContext){
 }
 
 // ══════ Gemini Flash Translation ══════
-async function llamaTranslate(text, fromLang, toLang){
+async function llamaTranslate(text, fromLang, toLang, context){
   if(!geminiKey) throw new Error('No Gemini key');
   const fromName = fromLang==='en'?'English':'Japanese';
   const toName = toLang==='en'?'English':'Japanese';
+  let prompt;
+  if(context&&context.length>0){
+    const ctx=context.join('\n');
+    prompt=`You are a real-time meeting translator (${fromName} to ${toName}).
+
+Previous sentences for context:
+${ctx}
+
+Translate ONLY the following sentence. Use the context above to resolve pronouns (he/she/they/it) and references. Do NOT translate the context sentences. Output ONLY the translation of the last sentence.
+
+${text}`;
+  } else {
+    prompt=`You are a real-time meeting translator. Translate the following ${fromName} to ${toName}. Translate ALL content faithfully. Do NOT summarize or omit anything. Output ONLY the translation.\n\n${text}`;
+  }
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      contents:[{parts:[{text:`You are a real-time meeting translator. Translate the following ${fromName} to ${toName}. Rules: Translate ALL content faithfully. Do NOT summarize or omit anything. Output ONLY the translation.\n\n${text}`}]}],
-      generationConfig:{maxOutputTokens:500,temperature:0.2}
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{maxOutputTokens:300,temperature:0.2}
     })
   });
   if(!r.ok) throw new Error(r.status);
@@ -371,108 +385,113 @@ function detectLang(t){
   return (jp+en===0)?'ja':(jp/(jp+en)>0.3?'ja':'en');
 }
 
-// ══════ Sentence splitter ══════
-function splitComplete(text){
-  // Find last sentence-ending punctuation (. ? !) followed by space
-  const lastDot=text.lastIndexOf('. ');
-  const lastQ=text.lastIndexOf('? ');
-  const lastEx=text.lastIndexOf('! ');
-  const lastEnd=Math.max(lastDot,lastQ,lastEx);
-
-  if(lastEnd===-1){
-    // No mid-text sentence break. Check if text ends with punctuation
-    if(/[.?!]$/.test(text.trim())) return {complete:text.trim(),pending:''};
-    return {complete:'',pending:text.trim()};
-  }
-  return {
-    complete:text.slice(0,lastEnd+1).trim(),
-    pending:text.slice(lastEnd+2).trim()
-  };
-}
-
-// ══════ Block management ══════
-function createBlock(sType){
-  const s=src[sType];
-  // Seal existing first
-  if(s.el) sealBlock(sType);
-
-  const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
-
-  s.text=''; s.jaText=''; s.started=Date.now(); s.silentCount=0;
-  s.el=document.createElement('div');
-  s.el.className='block live';
-  const icon=sType==='pc'?'🖥':'🎙';
-  s.el.innerHTML=`
-    <div class="block-head">
-      <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
-      <span class="block-live">LIVE</span>
-      <span class="block-time">${timeStr()}</span>
-    </div>
-    <div class="block-ja waiting">聞き取り中…</div>
-    <div class="block-en"></div>`;
-  document.getElementById('feed').appendChild(s.el);
-  scrollDown();
-}
-
-function updateBlock(sType, fullText, translation){
-  const s=src[sType];
-  if(!s.el) return;
-  const enEl=s.el.querySelector('.block-en');
-  const jaEl=s.el.querySelector('.block-ja');
-  if(enEl) enEl.textContent=fullText;
-  if(jaEl && translation){jaEl.className='block-ja';jaEl.textContent=translation;}
-  scrollDown();
-}
-
-function sealBlock(sType){
-  const s=src[sType];
-  if(!s.el) return;
-  s.el.classList.remove('live');
-  const lb=s.el.querySelector('.block-live');if(lb)lb.remove();
-
-  // Flush any remaining pending text
-  if(s.pendingText.trim()){
-    s.text+=(s.text?' ':'')+s.pendingText.trim();
-    s.pendingText='';
-  }
-
-  // Save to transcript & do final translation
-  if(s.text.trim()){
-    // Update original text display
-    const enEl=s.el.querySelector('.block-en');
-    if(enEl&&transMode!=='ja-only') enEl.textContent=s.text;
-
-    const jaEl=s.el.querySelector('.block-ja');
-    const timeEl=s.el.querySelector('.block-time');
-    const ja=jaEl?jaEl.textContent:'';
-    const time=timeEl?timeEl.textContent:timeStr();
-    transcript.push({
-      time: time,
-      source: sType==='pc'?'相手':'自分',
-      en: s.text.trim(),
-      ja: transMode==='ja-only'?s.text.trim():(ja&&ja!=='翻訳中…'&&ja!=='聞き取り中…')?ja:'',
-      _el: s.el,
-      _idx: transcript.length
-    });
-    const idx=transcript.length-1;
-
-    if(transMode==='ja-only'){
-      const jaEl2=s.el.querySelector('.block-ja');
-      if(jaEl2){jaEl2.className='block-ja';jaEl2.textContent=s.text;}
+// ══════ Sentence splitter — returns array of sentences + remainder ══════
+function splitSentences(text){
+  const sentences=[];
+  // Split on . ? ! followed by space (keep punctuation with sentence)
+  const parts=text.split(/(?<=[.?!])\s+/);
+  let remaining='';
+  for(let i=0;i<parts.length;i++){
+    const p=parts[i].trim();
+    if(!p) continue;
+    if(/[.?!]$/.test(p)){
+      sentences.push(p);
     } else {
-      // Final full translation of complete text for quality
-      const detected=detectLang(s.text);
-      const pair=getPair(detected);
-      llamaTranslate(s.text,pair.from,pair.to).then(t=>{
-        const jaEl2=s.el?.querySelector('.block-ja');
-        if(jaEl2){jaEl2.className='block-ja';jaEl2.textContent=t;}
-        if(transcript[idx]) transcript[idx].ja=t;
-        scrollDown();
-      }).catch(()=>{});
+      remaining=p; // last part without ending punctuation
     }
   }
-  s.el=null; s.text=''; s.jaText=''; s.pendingText=''; s.started=0; s.silentCount=0;
-  clearTimeout(s.sealTimer);
+  return {sentences,remaining};
+}
+
+// ══════ Block management — 1 sentence per block ══════
+function addSentenceBlock(sType, sentence, pair){
+  const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
+  const s=src[sType];
+  const el=document.createElement('div');
+  el.className='block';
+  const icon=sType==='pc'?'🖥':'🎙';
+  el.innerHTML=`
+    <div class="block-head">
+      <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
+      <span class="block-time">${timeStr()}</span>
+    </div>
+    <div class="block-ja waiting">翻訳中…</div>
+    <div class="block-en">${escapeHtml(sentence)}</div>`;
+  document.getElementById('feed').appendChild(el);
+  scrollDown();
+
+  // Save to transcript
+  const idx=transcript.length;
+  transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:sentence,ja:''});
+
+  if(transMode==='ja-only'){
+    el.querySelector('.block-ja').className='block-ja';
+    el.querySelector('.block-ja').textContent=sentence;
+    el.querySelector('.block-en').style.display='none';
+    transcript[idx].ja=sentence;
+  } else {
+    // Pass last 3 sentences as context for better translation
+    const ctx=s.context.slice(-3);
+    llamaTranslate(sentence,pair.from,pair.to,ctx).then(t=>{
+      const ja=el.querySelector('.block-ja');
+      if(ja){ja.className='block-ja';ja.textContent=t;}
+      transcript[idx].ja=t;
+      scrollDown();
+    }).catch(()=>{
+      const ja=el.querySelector('.block-ja');
+      if(ja){ja.className='block-ja';ja.textContent='⚠';}
+    });
+  }
+
+  // Add to context buffer (keep last 5)
+  s.context.push(sentence);
+  if(s.context.length>5) s.context.shift();
+}
+
+// Show/update the live pending block (incomplete sentence)
+function showPending(sType, text){
+  const s=src[sType];
+  if(!text){
+    if(s.el){s.el.remove();s.el=null;}
+    return;
+  }
+  const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
+  if(!s.el){
+    s.el=document.createElement('div');
+    s.el.className='block live';
+    const icon=sType==='pc'?'🖥':'🎙';
+    s.el.innerHTML=`
+      <div class="block-head">
+        <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
+        <span class="block-live">LIVE</span>
+        <span class="block-time">${timeStr()}</span>
+      </div>
+      <div class="block-ja" style="color:#94a3b8;font-size:14px"></div>
+      <div class="block-en"></div>`;
+    document.getElementById('feed').appendChild(s.el);
+  }
+  const jaEl=s.el.querySelector('.block-ja');
+  const enEl=s.el.querySelector('.block-en');
+  if(transMode==='ja-only'){
+    if(jaEl) jaEl.textContent=text;
+    if(enEl) enEl.style.display='none';
+  } else {
+    if(jaEl) jaEl.textContent='…';
+    if(enEl){enEl.style.display='';enEl.textContent=text;}
+  }
+  scrollDown();
+}
+
+// Flush pending text as a final block
+function flushPending(sType){
+  const s=src[sType];
+  if(s.pendingText.trim()){
+    const detected=detectLang(s.pendingText);
+    const pair=getPair(detected);
+    addSentenceBlock(sType,s.pendingText.trim(),pair);
+    s.pendingText='';
+  }
+  if(s.el){s.el.remove();s.el=null;}
 }
 
 // ══════ Word Export ══════
@@ -630,62 +649,31 @@ function startCapture(stream, sType){
 
         // Save as context for next chunk
         src[sType].lastText=text;
-
         const s=src[sType];
         s.silentCount=0;
-
-        // Check if block needs creation or auto-seal due to duration
-        if(!s.el) createBlock(sType);
-        if(Date.now()-s.started > MAX_BLOCK_SEC*1000){
-          sealBlock(sType);
-          createBlock(sType);
-        }
 
         // Detect language
         const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
         const pair=getPair(detected);
 
-        if(transMode==='ja-only'){
-          // Transcript-only mode: combine pending + new text, split sentences
-          const combined=((s.pendingText||'')+' '+text).trim();
-          const {complete,pending}=splitComplete(combined);
-          s.pendingText=pending;
+        // Combine pending buffer + new text, split into sentences
+        const combined=((s.pendingText||'')+' '+text).trim();
+        const {sentences,remaining}=splitSentences(combined);
+        s.pendingText=remaining;
 
-          if(complete){
-            s.text+=(s.text?' ':'')+complete;
-            const jaEl=s.el.querySelector('.block-ja');
-            if(jaEl){jaEl.className='block-ja';jaEl.textContent=s.text;}
-            const enEl=s.el.querySelector('.block-en');
-            if(enEl) enEl.style.display='none';
-          }
-          scrollDown();
-        } else {
-          // Translation mode: combine pending + new text, split into complete sentences
-          const combined=((s.pendingText||'')+' '+text).trim();
-          const {complete,pending}=splitComplete(combined);
-          s.pendingText=pending;
-
-          if(complete){
-            // Accumulate complete sentences into original text
-            s.text+=(s.text?' ':'')+complete;
-            const enEl=s.el.querySelector('.block-en');
-            if(enEl){enEl.style.display='';enEl.textContent=s.text;}
-            scrollDown();
-
-            // Translate complete sentences only
-            llamaTranslate(complete,pair.from,pair.to).then(t=>{
-              if(!s.el) return;
-              s.jaText=(s.jaText||'')+t+' ';
-              const ja=s.el.querySelector('.block-ja');
-              if(ja){ja.className='block-ja';ja.textContent=s.jaText;}
-              scrollDown();
-            }).catch(()=>{});
-          }
+        // Create a sealed block for each complete sentence
+        for(const sentence of sentences){
+          addSentenceBlock(sType,sentence,pair);
         }
 
-        // Reset seal timer
+        // Show remaining fragment as live pending block
+        showPending(sType,remaining);
+
+        // Reset flush timer — if silence comes, flush pending
         clearTimeout(s.sealTimer);
-        s.sealTimer=setTimeout(()=>sealBlock(sType), CHUNK_MS*2);
+        if(remaining){
+          s.sealTimer=setTimeout(()=>flushPending(sType), CHUNK_MS*2);
+        }
 
       }catch(err){
         console.error('Error:',err);
@@ -704,8 +692,8 @@ function startCapture(stream, sType){
 function handleSilence(sType){
   const s=src[sType];
   s.silentCount++;
-  if(s.el && s.silentCount>=SEAL_SILENCE){
-    sealBlock(sType);
+  if(s.silentCount>=SEAL_SILENCE){
+    flushPending(sType);
   }
 }
 
@@ -746,7 +734,7 @@ async function start(){
 function stop(){
   isOn=false;
   clearTimeout(micTimer);clearTimeout(pcTimer);
-  sealBlock('mic');sealBlock('pc');
+  flushPending('mic');flushPending('pc');
   if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
   if(pcStream){pcStream.getTracks().forEach(t=>t.stop());pcStream=null}
   document.getElementById('recBtn').classList.remove('on');
@@ -756,8 +744,9 @@ function stop(){
 
 function clearAll(){
   if(transcript.length>0&&!confirm('トランスクリプトをクリアします。保存しましたか？'))return;
-  sealBlock('mic');sealBlock('pc');
+  flushPending('mic');flushPending('pc');
   transcript=[];
+  src.mic.context=[];src.pc.context=[];
   document.getElementById('feed').innerHTML='<div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>';
 }
 
