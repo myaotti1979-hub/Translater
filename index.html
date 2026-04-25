@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MeetTranslate">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Meeting Translator</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;800&display=swap');
@@ -86,7 +93,7 @@
     <h1>🌐 Meeting Translator</h1>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
-      <button onclick="summarize()" title="AI要約">📋</button>
+      <button onclick="openSummary()" title="AI要約">📋</button>
       <button onclick="clearAll()" title="クリア">🗑</button>
       <button onclick="toggleSettings()" title="設定">⚙</button>
     </div>
@@ -146,8 +153,11 @@
   <!-- Summary Modal -->
   <div class="summary-overlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
     <div class="summary-box">
-      <h2>📋 AI要約（議事録）</h2>
-      <pre id="summaryText">要約を生成中...</pre>
+      <div class="src-row" style="margin-bottom:12px">
+        <button class="src-btn active" id="btnSumAll" onclick="summarize('all')">📋 全体要約</button>
+        <button class="src-btn" id="btnSumBlk" onclick="summarize('blocks')">💬 発言要約</button>
+      </div>
+      <pre id="summaryText">モードを選んでください</pre>
       <div class="btn-row">
         <button class="summary-word" onclick="exportWord(true)">📝 要約付きWord保存</button>
         <button class="summary-close" onclick="closeSummary()">閉じる</button>
@@ -183,17 +193,14 @@ let transcript = [];
 function sG(k){try{return localStorage.getItem(k)}catch{return null}}
 function sS(k,v){try{localStorage.setItem(k,v)}catch{}}
 
-// ══════ Init ══════
-(function(){
-  apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
-  sttEngine = sG('stteng')||'groq';
-  geminiModel = sG('gmodel')||'gemini-3-flash-preview';
-  document.getElementById('keyInput').value = apiKey;
-  document.getElementById('gemKeyInput').value = geminiKey;
-  document.getElementById('namesInput').value = nameHints;
-  updateKeyUI(); updateGemKeyUI(); updateEngineUI(); updateModelUI();
-})();
+// ══════ Model config (must be before init) ══════
+const MODEL_INFO={
+  'gemini-3-flash-preview':{btn:'btnM1',desc:'Gemini 3 Flash Preview — 最高品質・$0.50/$3.00 (音声$1.00) per 1M tokens'},
+  'gemini-2.5-flash':{btn:'btnM2',desc:'Gemini 2.5 Flash — 安定・$0.30/$2.50 (音声$1.00) per 1M tokens'},
+  'gemini-2.5-flash-lite':{btn:'btnM3',desc:'Gemini 2.5 Flash-Lite — 最安・$0.10/$0.40 (音声$0.30) per 1M tokens'}
+};
 
+// ══════ Settings functions (must be before init) ══════
 function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
 function saveKey(){apiKey=document.getElementById('keyInput').value.trim();sS('gk',apiKey);updateKeyUI()}
 function saveNames(){nameHints=document.getElementById('namesInput').value;sS('nh',nameHints)}
@@ -224,11 +231,6 @@ function updateEngineUI(){
     sttEngine==='groq'?'音声認識=Groq Whisper（無料）/ 翻訳・要約=Gemini Flash'
                       :'音声認識・翻訳・要約 すべてGemini Flash（Groq枠を消費しません）';
 }
-const MODEL_INFO={
-  'gemini-3-flash-preview':{btn:'btnM1',desc:'Gemini 3 Flash Preview — 最高品質・$0.50/$3.00 (音声$1.00) per 1M tokens'},
-  'gemini-2.5-flash':{btn:'btnM2',desc:'Gemini 2.5 Flash — 安定・$0.30/$2.50 (音声$1.00) per 1M tokens'},
-  'gemini-2.5-flash-lite':{btn:'btnM3',desc:'Gemini 2.5 Flash-Lite — 最安・$0.10/$0.40 (音声$0.30) per 1M tokens'}
-};
 function setModel(m){
   geminiModel=m;sS('gmodel',m);updateModelUI();
 }
@@ -240,6 +242,19 @@ function updateModelUI(){
     document.getElementById('modelDesc').textContent=info.desc;
   }
 }
+
+// ══════ Init ══════
+(function(){
+  apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
+  sttEngine = sG('stteng')||'groq';
+  geminiModel = sG('gmodel')||'gemini-3-flash-preview';
+  if(!MODEL_INFO[geminiModel]) geminiModel='gemini-3-flash-preview';
+  sS('gmodel',geminiModel);
+  document.getElementById('keyInput').value = apiKey;
+  document.getElementById('gemKeyInput').value = geminiKey;
+  document.getElementById('namesInput').value = nameHints;
+  updateKeyUI(); updateGemKeyUI(); updateEngineUI(); updateModelUI();
+})();
 
 // ══════ Scroll — always keep bottom visible ══════
 function scrollDown(){
@@ -433,13 +448,15 @@ function exportWord(includeSummary){
 }
 
 // ══════ Gemini Summary ══════
-async function summarize(){
+async function summarize(mode){
   if(transcript.length===0){showErr('要約するデータがありません');return}
   if(!geminiKey){showErr('⚙設定からGemini APIキーを入力してください');return}
 
-  // Show modal
+  // Show modal & update tab state
   document.getElementById('summaryOverlay').classList.add('show');
   document.getElementById('summaryText').textContent='要約を生成中…';
+  document.getElementById('btnSumAll').classList.toggle('active',mode==='all');
+  document.getElementById('btnSumBlk').classList.toggle('active',mode==='blocks');
 
   // Build transcript text
   let text='';
@@ -447,12 +464,8 @@ async function summarize(){
     text+=`[${e.time} ${e.source}] ${e.en}\n→ ${e.ja||''}\n\n`;
   });
 
-  try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        contents:[{parts:[{text:`以下は会議のトランスクリプトです。日本語で議事録として要約してください。
+  const prompts={
+    all:`以下は会議のトランスクリプトです。日本語で議事録として要約してください。
 
 要約には以下を含めてください：
 1. 会議の主要な議題
@@ -461,7 +474,34 @@ async function summarize(){
 4. 次のステップ
 
 トランスクリプト：
-${text}`}]}]
+${text}`,
+
+    blocks:`以下は会議のトランスクリプトです。各発言を「誰が何を言ったか」の形式で整理してください。
+
+ルール：
+1. フィラー（あー、えーと、um、uh、you know、basically、like等）を除去する
+2. 口語・方言・スラングはビジネス調の標準語に直す。ただし話者本人の発言として自然な表現にする
+   良い例：「やばくない？予算オーバーしちゃうよ」→「それは適切ではないと思います。予算をオーバーすると考えられます」
+   悪い例：「やばくない？」→「当該事案に対する懸念が示された」（第三者の報告文になっている）
+3. あくまで話者が自分で話しているトーンを保つ。議事録の地の文にしない
+4. 言い直しや繰り返しは1つにまとめてよい
+5. 意味のない相槌だけの発言（uh-huh、なるほど、right等）は省略してよい
+6. 話者（自分/相手）と時刻は保持する
+
+出力フォーマット：
+[時刻] 話者：発言内容
+
+トランスクリプト：
+${text}`
+  };
+
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        contents:[{parts:[{text:prompts[mode]}]}],
+        generationConfig:{maxOutputTokens:2000,temperature:0.2}
       })
     });
     if(!r.ok) throw new Error(r.status);
@@ -474,6 +514,12 @@ ${text}`}]}]
   }
 }
 
+function openSummary(){
+  if(transcript.length===0){showErr('要約するデータがありません');return}
+  if(!geminiKey){showErr('⚙設定からGemini APIキーを入力してください');return}
+  document.getElementById('summaryOverlay').classList.add('show');
+  document.getElementById('summaryText').textContent='モードを選んで要約を生成してください';
+}
 function closeSummary(){document.getElementById('summaryOverlay').classList.remove('show')}
 
 // ══════ Audio capture loop ══════
