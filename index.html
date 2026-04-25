@@ -3,136 +3,165 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Meeting Translator — Groq AI 会議翻訳</title>
+<title>Meeting Translator — リアルタイム会議翻訳</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;800&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
-  body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:linear-gradient(170deg,#0f172a 0%,#1a1038 55%,#0f172a 100%);color:#e2e8f0;font-family:'Noto Sans JP','Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
+  body{
+    min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;
+    background:linear-gradient(170deg,#0f172a 0%,#1a1038 55%,#0f172a 100%);
+    color:#e2e8f0;font-family:'Noto Sans JP','Segoe UI',sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
   @keyframes ripple{0%{transform:scale(.8);opacity:.6}100%{transform:scale(2.8);opacity:0}}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+  @keyframes livePulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-  .header{text-align:center;padding:14px 16px 2px}
-  .header-label{font-size:10px;letter-spacing:5px;color:#818cf8;text-transform:uppercase;font-weight:700;margin-bottom:2px}
-  .header h1{font-size:17px;font-weight:800;background:linear-gradient(135deg,#e0e7ff,#c4b5fd,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .header .engine{font-size:10px;color:#64748b;margin-top:2px}
+  .header{text-align:center;padding:16px 16px 4px}
+  .header-label{font-size:10px;letter-spacing:5px;color:#818cf8;text-transform:uppercase;font-weight:700;margin-bottom:3px}
+  .header h1{font-size:18px;font-weight:800;background:linear-gradient(135deg,#e0e7ff,#c4b5fd,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 
-  .settings-toggle{text-align:center;padding:6px}
-  .settings-toggle button{background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc;font-size:11px;padding:5px 14px;border-radius:16px;cursor:pointer;font-family:inherit;font-weight:600}
-  .settings-panel{display:none;padding:0 16px 8px}
-  .settings-panel.show{display:block}
-  .settings-section{background:rgba(30,41,59,0.6);border-radius:12px;padding:12px;margin-bottom:8px;border:1px solid rgba(99,102,241,0.1)}
-  .settings-section h3{font-size:11px;color:#818cf8;font-weight:700;margin-bottom:8px;letter-spacing:1px}
-  .api-key-row{display:flex;gap:6px}
-  .api-key-row input{flex:1;padding:7px 10px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(15,23,42,0.8);color:#e2e8f0;font-size:13px;font-family:inherit}
-  .api-key-row input:focus{outline:none;border-color:#818cf8}
-  .btn{padding:7px 12px;border-radius:8px;border:none;background:#6366f1;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap}
-  .btn-sm{background:#334155}
-  .dict-help{font-size:11px;color:#64748b;margin-bottom:6px;line-height:1.6}
-  .dict-area{width:100%;min-height:60px;padding:8px 10px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(15,23,42,0.8);color:#e2e8f0;font-size:12px;font-family:inherit;resize:vertical;line-height:1.7}
-  .dict-area:focus{outline:none;border-color:#818cf8}
-  .dict-area::placeholder{color:#475569}
-  .save-msg{font-size:11px;color:#34d399;margin-top:4px;display:none}
-
-  .mode-tabs{display:flex;gap:5px;padding:6px 16px 4px;justify-content:center}
-  .mode-tab{padding:6px 12px;border-radius:18px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;transition:all .25s;font-family:inherit;white-space:nowrap}
-  .mode-tab.active{background:rgba(99,102,241,0.2);border-color:#818cf8;color:#c7d2fe}
+  .mode-tabs{display:flex;gap:6px;padding:10px 16px 6px;justify-content:center;flex-wrap:wrap}
+  .mode-tab{padding:7px 14px;border-radius:20px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;transition:all .25s;font-family:inherit;white-space:nowrap}
+  .mode-tab.active{background:rgba(99,102,241,0.2);border-color:#818cf8;color:#c7d2fe;box-shadow:0 0 12px rgba(99,102,241,0.2)}
   .mode-tab.auto-tab.active{background:linear-gradient(135deg,rgba(99,102,241,0.2),rgba(244,114,182,0.2));border-color:#a78bfa;color:#e9d5ff}
 
-  .auto-indicator{display:none;text-align:center;padding:2px 16px;font-size:10px;color:#a78bfa}
-  .auto-indicator.show{display:block}
-  .detect-lang{display:inline-block;padding:2px 10px;border-radius:10px;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.2);font-weight:600}
+  .lang-selector{display:none;align-items:center;justify-content:center;gap:8px;padding:8px 16px 4px}
+  .lang-selector.show{display:flex}
+  .lang-select-wrap{flex:1;max-width:150px}
+  .lang-select{width:100%;padding:7px 10px;border-radius:10px;border:1px solid rgba(99,102,241,0.25);background:rgba(30,41,59,0.8);color:#e2e8f0;font-size:13px;font-family:inherit;font-weight:600;appearance:none;cursor:pointer;text-align:center;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+  .lang-select:focus{outline:none;border-color:#818cf8}
+  .lang-select option{background:#1e293b}
+  .swap-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.15);color:#818cf8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .3s;flex-shrink:0}
+  .swap-btn:active{background:rgba(99,102,241,0.3);transform:rotate(180deg)}
 
-  .wave{display:flex;align-items:center;justify-content:center;gap:2.5px;height:26px;margin:4px 0}
+  .auto-indicator{display:none;text-align:center;padding:4px 16px;font-size:11px;color:#a78bfa}
+  .auto-indicator.show{display:block}
+  .auto-indicator .detect-lang{display:inline-block;padding:2px 10px;border-radius:10px;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.2);font-weight:600;transition:all .3s}
+
+  .wave{display:flex;align-items:center;justify-content:center;gap:2.5px;height:28px;margin:4px 0}
   .wave-bar{width:2.5px;border-radius:2px;background-color:#475569;height:4px;transition:height .5s ease;opacity:.25}
   .wave-bar.active{background-color:#f43f5e;transition:height .1s ease}
 
-  .controls{display:flex;justify-content:center;align-items:center;padding:0 20px 4px;position:relative}
-  .mic-btn{width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(99,102,241,0.4);transition:all .3s;position:relative}
+  .controls{display:flex;justify-content:center;align-items:center;padding:0 20px 6px;position:relative}
+  .mic-btn{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(99,102,241,0.4);transition:all .3s;position:relative}
   .mic-btn.listening{background:linear-gradient(135deg,#dc2626,#f43f5e);box-shadow:0 0 32px rgba(244,63,94,0.5)}
   .mic-btn .rr{position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(244,63,94,0.4);animation:ripple 1.5s ease-out infinite;display:none}
   .mic-btn .rr:nth-child(2){animation-delay:.5s;border-color:rgba(244,63,94,0.3)}
   .mic-btn.listening .rr{display:block}
-  .clear-btn{position:absolute;right:20px;width:32px;height:32px;border-radius:50%;border:1px solid #334155;background:rgba(30,27,75,0.6);color:#94a3b8;font-size:13px;cursor:pointer;display:none;align-items:center;justify-content:center}
+  .clear-btn{position:absolute;right:20px;width:34px;height:34px;border-radius:50%;border:1px solid #334155;background:rgba(30,27,75,0.6);color:#94a3b8;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center}
   .clear-btn.show{display:flex}
 
-  .status{text-align:center;font-size:11px;color:#64748b;font-weight:600;margin-bottom:4px;min-height:16px}
+  .status{text-align:center;font-size:11px;color:#64748b;font-weight:600;margin-bottom:5px}
   .status.active{color:#f43f5e}
-  .status.warn{color:#f59e0b}
-  .status.processing{color:#818cf8}
-  .error-box{margin:0 16px 4px;padding:7px 10px;border-radius:8px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;font-size:11px;text-align:center;display:none}
+  .error-box{margin:0 16px 6px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;font-size:12px;text-align:center;display:none}
   .error-box.show{display:block}
 
-  .col-headers{display:flex;padding:0 16px;margin-bottom:3px;gap:8px}
-  .col-header{flex:1;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px;text-align:center;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .col-headers{display:flex;padding:0 16px;margin-bottom:4px;gap:8px}
+  .col-header{flex:1;font-size:10px;font-weight:700;padding:5px 8px;border-radius:8px;text-align:center;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .col-header.src{color:#818cf8;background:rgba(99,102,241,0.1)}
   .col-header.tgt{color:#f472b6;background:rgba(244,114,182,0.1)}
 
-  .results{flex:1;overflow-y:auto;padding:0 16px 100px;display:flex;flex-direction:column;gap:6px}
-  .placeholder{text-align:center;color:#475569;margin-top:20px;font-size:12px;line-height:2}
+  .results{flex:1;overflow-y:auto;padding:0 16px 24px;display:flex;flex-direction:column;gap:7px}
+  .placeholder{text-align:center;color:#475569;margin-top:24px;font-size:13px;line-height:2}
+  .placeholder .sub{font-size:11px;color:#374151}
+
   .entry{display:flex;gap:8px;animation:fadeUp .3s ease-out}
-  .entry-left,.entry-right{flex:1;border-radius:11px;padding:9px 11px;min-height:38px;word-break:break-word}
+  .entry-left,.entry-right{flex:1;border-radius:12px;padding:10px 12px;min-height:40px;word-break:break-word}
   .entry-left{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15)}
-  .entry-right{background:rgba(244,114,182,0.08);border:1px solid rgba(244,114,182,0.15)}
-  .lang-badge{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;margin-bottom:3px}
+  .entry-right{background:rgba(244,114,182,0.14);border:1px solid rgba(244,114,182,0.25)}
+  .entry .lang-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-bottom:4px}
   .lang-badge.en{color:#818cf8;background:rgba(99,102,241,0.15)}
   .lang-badge.ja{color:#f472b6;background:rgba(244,114,182,0.15)}
-  .src-text{font-size:13px;line-height:1.6;color:#cbd5e1}
-  .tgt-text{font-size:14px;line-height:1.65;color:#f1f5f9;font-weight:500}
-  .loading-text{color:#818cf8;font-size:11px}
-  .loading-text .dot{width:4px;height:4px;border-radius:50%;background:#818cf8;display:inline-block;margin-left:2px}
-  .loading-text .dot:nth-child(1){animation:dotBounce 1s ease-in-out 0s infinite}
-  .loading-text .dot:nth-child(2){animation:dotBounce 1s ease-in-out .15s infinite}
-  .loading-text .dot:nth-child(3){animation:dotBounce 1s ease-in-out .3s infinite}
+  .lang-badge.other{color:#a78bfa;background:rgba(167,139,250,0.15)}
+  .src-text{font-size:14px;line-height:1.6;color:#cbd5e1}
+  .tgt-text{font-size:15px;line-height:1.7;color:#ffffff;font-weight:700}
 
-  .rec-indicator{display:none;gap:8px}
-  .rec-indicator.show{display:flex}
-  .rec-indicator .entry-left{background:rgba(244,63,94,0.06);border:1px dashed rgba(244,63,94,0.2)}
-  .rec-indicator .entry-right{background:rgba(244,114,182,0.04);border:1px dashed rgba(244,114,182,0.12)}
-  .rec-text{font-size:11px;color:#f87171;font-weight:600}
+  /* Live entry - actively being spoken */
+  .entry.live{border:none}
+  .entry.live .entry-left{border:1px solid rgba(99,102,241,0.35);background:rgba(99,102,241,0.12)}
+  .entry.live .entry-right{border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.16)}
+  .live-badge{display:inline-block;font-size:8px;font-weight:700;color:#f43f5e;background:rgba(244,63,94,0.2);padding:1px 6px;border-radius:4px;margin-left:6px;animation:livePulse 1.2s ease-in-out infinite}
+  .interim-part{color:#64748b;font-style:italic}
+
+  /* Sealed entry */
+  .entry.sealed .entry-left{opacity:.85}
+  .entry.sealed .entry-right{opacity:1}
+
+  .tgt-placeholder{color:#818cf8;font-size:12px}
+  .tgt-placeholder .dot{width:4px;height:4px;border-radius:50%;background:#818cf8;display:inline-block;margin-left:2px}
+  .tgt-placeholder .dot:nth-child(1){animation:dotBounce 1s ease-in-out 0s infinite}
+  .tgt-placeholder .dot:nth-child(2){animation:dotBounce 1s ease-in-out .15s infinite}
+  .tgt-placeholder .dot:nth-child(3){animation:dotBounce 1s ease-in-out .3s infinite}
+
+  .not-supported{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;flex-direction:column}
+  .not-supported p:first-child{font-size:44px;margin-bottom:12px}
+  .not-supported .msg{font-size:17px;font-weight:600}
+  .not-supported .hint{font-size:13px;color:#64748b;margin-top:8px}
 </style>
 </head>
 <body>
 
 <div id="app">
   <div class="header">
-    <div class="header-label">AI Meeting Translator</div>
+    <div class="header-label">Meeting Translator</div>
     <h1>リアルタイム会議翻訳</h1>
-    <div class="engine">Powered by Groq Whisper + LLM（無料）</div>
-  </div>
-
-  <div class="settings-toggle"><button onclick="toggleSettings()">⚙ 設定・辞書</button></div>
-
-  <div class="settings-panel" id="settingsPanel">
-    <div class="settings-section">
-      <h3>🔑 Groq API キー（無料・カード不要）</h3>
-      <div class="api-key-row">
-        <input type="password" id="apiKeyInput" placeholder="gsk_...">
-        <button class="btn" onclick="saveApiKey()">保存</button>
-        <button class="btn btn-sm" onclick="toggleKeyVis()">👁</button>
-      </div>
-      <div style="font-size:10px;color:#64748b;margin-top:4px">
-        <a href="https://console.groq.com/keys" target="_blank" style="color:#818cf8">console.groq.com</a> で無料取得（メールだけでOK）
-      </div>
-      <div class="save-msg" id="keySaveMsg">✓ 保存しました</div>
-    </div>
-    <div class="settings-section">
-      <h3>📖 固有名詞辞書（Whisper prompt に渡されます）</h3>
-      <div class="dict-help">人名・社名・専門用語を登録 → Whisperの認識精度が向上します。<br>カンマ区切りまたは改行で入力。</div>
-      <textarea class="dict-area" id="dictArea" placeholder="例：田中太郎, Tanaka, 佐藤花子, Sato&#10;株式会社サンプル, Sample Corp&#10;React, TypeScript, KPI"></textarea>
-      <button class="btn" onclick="saveDict()" style="margin-top:6px">辞書を保存</button>
-      <div class="save-msg" id="dictSaveMsg">✓ 保存しました</div>
-    </div>
   </div>
 
   <div class="mode-tabs">
     <button class="mode-tab auto-tab active" onclick="setMode('auto')">🔄 自動 日⇔英</button>
     <button class="mode-tab" onclick="setMode('en-ja')">🇺🇸→🇯🇵</button>
     <button class="mode-tab" onclick="setMode('ja-en')">🇯🇵→🇺🇸</button>
+    <button class="mode-tab" onclick="setMode('custom')">🌐 多言語</button>
   </div>
 
-  <div class="auto-indicator show" id="autoIndicator">
-    <span class="detect-lang" id="detectLang">Whisper が言語を自動検出します</span>
+  <div class="auto-indicator" id="autoIndicator">
+    <span class="detect-lang" id="detectLang">自動言語検出: 待機中</span>
+  </div>
+
+  <div class="lang-selector" id="langSelector">
+    <div class="lang-select-wrap">
+      <select class="lang-select" id="srcLang" onchange="onLangChange()">
+        <option value="en-US" data-code="en">🇺🇸 English</option>
+        <option value="ja-JP" data-code="ja">🇯🇵 日本語</option>
+        <option value="zh-CN" data-code="zh-CN">🇨🇳 中文(简)</option>
+        <option value="zh-TW" data-code="zh-TW">🇹🇼 中文(繁)</option>
+        <option value="ko-KR" data-code="ko">🇰🇷 한국어</option>
+        <option value="es-ES" data-code="es">🇪🇸 Español</option>
+        <option value="fr-FR" data-code="fr">🇫🇷 Français</option>
+        <option value="de-DE" data-code="de">🇩🇪 Deutsch</option>
+        <option value="it-IT" data-code="it">🇮🇹 Italiano</option>
+        <option value="pt-BR" data-code="pt">🇧🇷 Português</option>
+        <option value="ru-RU" data-code="ru">🇷🇺 Русский</option>
+        <option value="th-TH" data-code="th">🇹🇭 ไทย</option>
+        <option value="vi-VN" data-code="vi">🇻🇳 Tiếng Việt</option>
+        <option value="id-ID" data-code="id">🇮🇩 Indonesia</option>
+        <option value="ar-SA" data-code="ar">🇸🇦 العربية</option>
+        <option value="hi-IN" data-code="hi">🇮🇳 हिन्दी</option>
+      </select>
+    </div>
+    <button class="swap-btn" onclick="swapLangs()">⇄</button>
+    <div class="lang-select-wrap">
+      <select class="lang-select" id="tgtLang" onchange="onLangChange()">
+        <option value="en-US" data-code="en">🇺🇸 English</option>
+        <option value="ja-JP" data-code="ja" selected>🇯🇵 日本語</option>
+        <option value="zh-CN" data-code="zh-CN">🇨🇳 中文(简)</option>
+        <option value="zh-TW" data-code="zh-TW">🇹🇼 中文(繁)</option>
+        <option value="ko-KR" data-code="ko">🇰🇷 한국어</option>
+        <option value="es-ES" data-code="es">🇪🇸 Español</option>
+        <option value="fr-FR" data-code="fr">🇫🇷 Français</option>
+        <option value="de-DE" data-code="de">🇩🇪 Deutsch</option>
+        <option value="it-IT" data-code="it">🇮🇹 Italiano</option>
+        <option value="pt-BR" data-code="pt">🇧🇷 Português</option>
+        <option value="ru-RU" data-code="ru">🇷🇺 Русский</option>
+        <option value="th-TH" data-code="th">🇹🇭 ไทย</option>
+        <option value="vi-VN" data-code="vi">🇻🇳 Tiếng Việt</option>
+        <option value="id-ID" data-code="id">🇮🇩 Indonesia</option>
+        <option value="ar-SA" data-code="ar">🇸🇦 العربية</option>
+        <option value="hi-IN" data-code="hi">🇮🇳 हिन्दी</option>
+      </select>
+    </div>
   </div>
 
   <div class="wave" id="wave"></div>
@@ -149,384 +178,288 @@
   <div class="error-box" id="errorBox"></div>
 
   <div class="col-headers">
-    <div class="col-header src" id="colSrc">🎙 聞き取り（Whisper）</div>
-    <div class="col-header tgt" id="colTgt">💬 翻訳（LLM）</div>
+    <div class="col-header src" id="colSrc">🎙 聞き取り（自動検出）</div>
+    <div class="col-header tgt" id="colTgt">💬 翻訳</div>
   </div>
 
   <div class="results" id="results">
     <div class="placeholder" id="placeholder">
       🎙 マイクボタンを押して話してください<br>
-      <span style="font-size:11px;color:#374151">Groq Whisper が固有名詞も高精度で認識します<br>⚙設定からAPIキーと辞書を登録してください</span>
+      <span class="sub">話しながらリアルタイムで翻訳されます</span>
     </div>
   </div>
 </div>
 
+<div class="not-supported" id="notSupported" style="display:none">
+  <p>🚫</p>
+  <p class="msg">お使いのブラウザは音声認識に対応していません</p>
+  <p class="hint">Chrome・Edge でお試しください</p>
+</div>
+
 <script>
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) { document.getElementById('app').style.display = 'none'; document.getElementById('notSupported').style.display = 'flex'; }
+
 // ── State ──
-let apiKey = '', dictionary = '';
-let currentMode = 'auto';
-let isListening = false;
-let mediaRecorder = null, audioCtx = null, analyser = null, micStream = null;
-let audioChunks = [];
-let silenceTimer = null;
-let isSpeaking = false;
-let entryId = 0;
+let recognition = null, isListening = false, currentMode = 'auto', autoCurrentLang = 'ja-JP';
 let waveInterval = null, waveTick = 0;
-let processing = false;
 
-const SILENCE_THRESHOLD = 0.015; // RMS threshold
-const SILENCE_DURATION = 1800;   // ms of silence before sending
-const MAX_CHUNK_MS = 15000;      // max recording length
-let chunkStartTime = 0;
+// ── Live entry state ──
+let liveEl = null;           // current live DOM entry
+let liveFinal = '';          // accumulated final text for current utterance
+let liveInterim = '';        // current interim text
+let sealTimer = null;        // timer to seal entry after silence
+const SEAL_DELAY = 2500;     // ms silence before sealing
+let translateTimer = null;   // throttle timer for translation
+let lastTranslateTime = 0;
+const TRANSLATE_THROTTLE = 600; // min ms between translate calls
+let currentAbort = null;     // AbortController for in-flight translation
+let translateVersion = 0;    // version counter to ignore stale results
 
-// ── Init ──
-try {
-  apiKey = localStorage.getItem('groq_api_key') || '';
-  dictionary = localStorage.getItem('groq_dict') || '';
-  document.getElementById('apiKeyInput').value = apiKey;
-  document.getElementById('dictArea').value = dictionary;
-} catch(e) {}
-
-// ── Settings ──
-function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('show'); }
-function saveApiKey() {
-  apiKey = document.getElementById('apiKeyInput').value.trim();
-  try { localStorage.setItem('groq_api_key', apiKey); } catch(e) {}
-  flash('keySaveMsg');
-}
-function saveDict() {
-  dictionary = document.getElementById('dictArea').value.trim();
-  try { localStorage.setItem('groq_dict', dictionary); } catch(e) {}
-  flash('dictSaveMsg');
-}
-function toggleKeyVis() {
-  const i = document.getElementById('apiKeyInput');
-  i.type = i.type === 'password' ? 'text' : 'password';
-}
-function flash(id) {
-  const el = document.getElementById(id);
-  el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 2000);
+// ── Language detection ──
+function detectLang(t) {
+  const jp = (t.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF]/g)||[]).length;
+  const en = (t.match(/[a-zA-Z]/g)||[]).length;
+  return (jp+en===0)?'ja':(jp/(jp+en)>0.3?'ja':'en');
 }
 
 // ── Mode ──
-function setMode(mode) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-tab').forEach((t, i) => {
-    t.classList.toggle('active', ['auto','en-ja','ja-en'][i] === mode);
-  });
-  document.getElementById('autoIndicator').classList.toggle('show', mode === 'auto');
-  updateColHeaders();
+function setMode(m) { const w=isListening; if(w) stopListening(); currentMode=m;
+  document.querySelectorAll('.mode-tab').forEach((t,i)=>t.classList.toggle('active',['auto','en-ja','ja-en','custom'][i]===m));
+  document.getElementById('langSelector').classList.toggle('show',m==='custom');
+  document.getElementById('autoIndicator').classList.toggle('show',m==='auto');
+  updateCols(); if(w) startListening(); }
+function updateCols() {
+  const c1=document.getElementById('colSrc'),c2=document.getElementById('colTgt');
+  switch(currentMode){case 'auto':c1.textContent='🎙 聞き取り（自動検出）';c2.textContent='💬 翻訳';break;
+  case 'en-ja':c1.textContent='🎙 English';c2.textContent='🇯🇵 日本語';break;
+  case 'ja-en':c1.textContent='🎙 日本語';c2.textContent='🇺🇸 English';break;
+  case 'custom':c1.textContent='🎙 '+gO(document.getElementById('srcLang')).l;c2.textContent='💬 '+gO(document.getElementById('tgtLang')).l;break;}
 }
-function updateColHeaders() {
-  const s = document.getElementById('colSrc'), t = document.getElementById('colTgt');
-  if (currentMode === 'auto') { s.textContent = '🎙 聞き取り（Whisper自動検出）'; t.textContent = '💬 翻訳（LLM）'; }
-  else if (currentMode === 'en-ja') { s.textContent = '🎙 English（Whisper）'; t.textContent = '🇯🇵 日本語'; }
-  else { s.textContent = '🎙 日本語（Whisper）'; t.textContent = '🇺🇸 English'; }
-}
+function gO(s){const o=s.options[s.selectedIndex];return{v:o.value,c:o.dataset.code,l:o.textContent.trim()}}
+function onLangChange(){updateCols();if(isListening){stopListening();startListening()}}
+function swapLangs(){const s=document.getElementById('srcLang'),t=document.getElementById('tgtLang'),sv=s.value;s.value=t.value;t.value=sv;onLangChange()}
+function getRL(){switch(currentMode){case 'en-ja':return'en-US';case 'ja-en':return'ja-JP';case 'custom':return gO(document.getElementById('srcLang')).v;case 'auto':return autoCurrentLang}}
+function getPair(d){switch(currentMode){case 'en-ja':return{s:'en',t:'ja'};case 'ja-en':return{s:'ja',t:'en'};case 'custom':return{s:gO(document.getElementById('srcLang')).c,t:gO(document.getElementById('tgtLang')).c};case 'auto':return d==='ja'?{s:'ja',t:'en'}:{s:'en',t:'ja'}}}
 
 // ── Wave ──
-const waveEl = document.getElementById('wave');
-for (let i = 0; i < 28; i++) { const b = document.createElement('div'); b.className = 'wave-bar'; waveEl.appendChild(b); }
-const waveBars = waveEl.querySelectorAll('.wave-bar');
-function animateWave(on) {
-  if (on && !waveInterval) {
-    waveInterval = setInterval(() => { waveTick++; waveBars.forEach((b, i) => { b.classList.add('active'); b.style.height=(8+Math.abs(Math.sin((waveTick+i)*0.45))*24+Math.sin(i*0.8)*6)+'px'; b.style.opacity=0.6+Math.abs(Math.sin((waveTick+i)*0.45))*0.4; }); }, 120);
-  } else if (!on) { clearInterval(waveInterval); waveInterval=null; waveBars.forEach(b=>{b.classList.remove('active');b.style.height='4px';b.style.opacity='0.25';}); }
+const waveEl=document.getElementById('wave');
+for(let i=0;i<28;i++){const b=document.createElement('div');b.className='wave-bar';waveEl.appendChild(b)}
+const waveBars=waveEl.querySelectorAll('.wave-bar');
+function animWave(on){if(on&&!waveInterval){waveInterval=setInterval(()=>{waveTick++;waveBars.forEach((b,i)=>{b.classList.add('active');b.style.height=(8+Math.abs(Math.sin((waveTick+i)*.45))*24+Math.sin(i*.8)*6)+'px';b.style.opacity=.6+Math.abs(Math.sin((waveTick+i)*.45))*.4})},120)}else if(!on){clearInterval(waveInterval);waveInterval=null;waveBars.forEach(b=>{b.classList.remove('active');b.style.height='4px';b.style.opacity='.25'})}}
+
+// ── Scroll ──
+function scroll(){const r=document.getElementById('results');requestAnimationFrame(()=>r.scrollTop=r.scrollHeight)}
+
+// ── Translation ──
+async function translateAPI(text,src,tgt,version){
+  const r=await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}`);
+  const d=await r.json();
+  if(d.responseStatus===200&&d.responseData?.translatedText) return{text:d.responseData.translatedText,version};
+  throw new Error('fail');
 }
 
-// ── Audio: VAD + Recording ──
-function getRMS(analyser, dataArray) {
-  analyser.getByteTimeDomainData(dataArray);
-  let sum = 0;
-  for (let i = 0; i < dataArray.length; i++) {
-    const v = (dataArray[i] - 128) / 128;
-    sum += v * v;
-  }
-  return Math.sqrt(sum / dataArray.length);
-}
+function triggerTranslate(){
+  const text=(liveFinal+' '+liveInterim).trim();
+  if(!text||!liveEl) return;
 
-function startVADLoop() {
-  const dataArray = new Uint8Array(analyser.fftSize);
-  const check = () => {
-    if (!isListening) return;
-    const rms = getRMS(analyser, dataArray);
+  const now=Date.now();
+  const wait=TRANSLATE_THROTTLE-(now-lastTranslateTime);
 
-    if (rms > SILENCE_THRESHOLD) {
-      // Speech detected
-      if (!isSpeaking) {
-        isSpeaking = true;
-        startRecordingChunk();
-      }
-      clearTimeout(silenceTimer);
-      silenceTimer = null;
+  clearTimeout(translateTimer);
 
-      // Force send if too long
-      if (Date.now() - chunkStartTime > MAX_CHUNK_MS) {
-        stopRecordingChunk();
-        // Restart immediately for next segment
-        setTimeout(() => { if (isListening) { isSpeaking = true; startRecordingChunk(); } }, 100);
-      }
-    } else if (isSpeaking && !silenceTimer) {
-      // Silence started
-      silenceTimer = setTimeout(() => {
-        if (isSpeaking) {
-          isSpeaking = false;
-          stopRecordingChunk();
-        }
-        silenceTimer = null;
-      }, SILENCE_DURATION);
-    }
-
-    requestAnimationFrame(check);
-  };
-  requestAnimationFrame(check);
-}
-
-function startRecordingChunk() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') return;
-  audioChunks = [];
-  chunkStartTime = Date.now();
-  try {
-    mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
-  } catch {
-    mediaRecorder = new MediaRecorder(micStream);
-  }
-  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-  mediaRecorder.onstop = () => {
-    if (audioChunks.length > 0) {
-      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-      if (blob.size > 1000) { // ignore tiny clips
-        processAudioChunk(blob);
-      }
-    }
-  };
-  mediaRecorder.start(250); // collect data every 250ms
-  setStatus('● 録音中…', 'active');
-}
-
-function stopRecordingChunk() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
+  if(wait>0){
+    translateTimer=setTimeout(()=>doTranslate(text),wait);
+  } else {
+    doTranslate(text);
   }
 }
 
-// ── Groq Whisper: Transcribe ──
-async function transcribeWithWhisper(audioBlob) {
-  const formData = new FormData();
-  formData.append('file', audioBlob, 'audio.webm');
-  formData.append('model', 'whisper-large-v3');
-  formData.append('response_format', 'verbose_json');
+function doTranslate(text){
+  lastTranslateTime=Date.now();
+  const detected=currentMode==='auto'?detectLang(text):null;
 
-  // Language setting
-  if (currentMode === 'en-ja') formData.append('language', 'en');
-  else if (currentMode === 'ja-en') formData.append('language', 'ja');
-  // auto mode: don't set language → Whisper auto-detects
-
-  // Prompt with dictionary for proper noun recognition
-  if (dictionary) {
-    formData.append('prompt', dictionary);
+  if(currentMode==='auto'&&detected){
+    const dl=document.getElementById('detectLang');
+    dl.textContent=detected==='ja'?'検出: 🇯🇵 日本語 → 🇺🇸 English':'検出: 🇺🇸 English → 🇯🇵 日本語';
+    autoCurrentLang=detected==='ja'?'ja-JP':'en-US';
   }
 
-  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}` },
-    body: formData
-  });
+  const pair=getPair(detected);
+  const ver=++translateVersion;
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Whisper API error: ${res.status}`);
-  }
+  // Update source badge if needed
+  const srcBadge=liveEl.querySelector('.lang-badge-src');
+  const tgtBadge=liveEl.querySelector('.lang-badge-tgt');
+  if(srcBadge) { srcBadge.className='lang-badge lang-badge-src '+(pair.s==='ja'?'ja':pair.s==='en'?'en':'other'); srcBadge.textContent=pair.s.toUpperCase(); }
+  if(tgtBadge) { tgtBadge.className='lang-badge lang-badge-tgt '+(pair.t==='ja'?'ja':pair.t==='en'?'en':'other'); tgtBadge.textContent=pair.t.toUpperCase(); }
 
-  return await res.json();
+  translateAPI(text,pair.s,pair.t,ver).then(r=>{
+    if(r.version!==translateVersion) return; // stale
+    const tgtEl=liveEl?.querySelector('.tgt-text');
+    if(tgtEl){tgtEl.className='tgt-text';tgtEl.textContent=r.text;}
+    scroll();
+  }).catch(()=>{});
 }
 
-// ── Groq LLM: Translate ──
-async function translateWithLLM(text, srcLang, tgtLang) {
-  const langMap = { ja: '日本語', en: 'English' };
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional meeting translator. Translate the given text from ${langMap[srcLang]} to ${langMap[tgtLang]}. Output ONLY the translation, nothing else. Keep proper nouns, technical terms, and names as-is or appropriately transliterated.`
-        },
-        { role: 'user', content: text }
-      ],
-      temperature: 0.2,
-      max_tokens: 512
-    })
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `LLM API error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || '翻訳失敗';
-}
-
-// ── Process audio chunk ──
-async function processAudioChunk(blob) {
-  if (processing) return; // prevent overlap
-  processing = true;
-  setStatus('🤖 Whisper 認識中…', 'processing');
-
-  const id = ++entryId;
-  const ph = document.getElementById('placeholder'); if (ph) ph.remove();
+// ── Live entry management ──
+function ensureLiveEntry(){
+  if(liveEl) return;
+  const ph=document.getElementById('placeholder');if(ph) ph.remove();
   document.getElementById('clearBtn').classList.add('show');
 
-  // Placeholder entry
-  const el = document.createElement('div');
-  el.className = 'entry'; el.id = 'entry-' + id;
-  el.innerHTML = `
+  liveEl=document.createElement('div');
+  liveEl.className='entry live';
+  liveEl.innerHTML=`
     <div class="entry-left">
-      <div class="lang-badge en">…</div>
-      <div class="src-text loading-text" id="src-${id}">Whisper認識中<span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div><span class="lang-badge lang-badge-src other">…</span><span class="live-badge">LIVE</span></div>
+      <div class="src-text" id="liveSrc"></div>
     </div>
     <div class="entry-right">
-      <div class="lang-badge ja">…</div>
-      <div class="tgt-text" id="tgt-${id}" style="color:#475569;font-size:11px">待機中</div>
-    </div>`;
-  const results = document.getElementById('results');
-  results.appendChild(el);
-  results.scrollTop = results.scrollHeight;
-
-  try {
-    // Step 1: Whisper transcription
-    const whisperResult = await transcribeWithWhisper(blob);
-    const text = whisperResult.text?.trim();
-    if (!text) { el.remove(); processing = false; setStatus('● 聞き取り中…', 'active'); return; }
-
-    const detectedLang = whisperResult.language || 'ja';
-    const srcLang = currentMode === 'en-ja' ? 'en' : currentMode === 'ja-en' ? 'ja' : (detectedLang === 'japanese' || detectedLang === 'ja' ? 'ja' : 'en');
-    const tgtLang = srcLang === 'ja' ? 'en' : 'ja';
-
-    // Update source
-    const srcBadge = el.querySelector('.entry-left .lang-badge');
-    srcBadge.className = `lang-badge ${srcLang}`;
-    srcBadge.textContent = srcLang.toUpperCase();
-    document.getElementById('src-' + id).className = 'src-text';
-    document.getElementById('src-' + id).textContent = text;
-
-    // Update auto indicator
-    if (currentMode === 'auto') {
-      const dl = document.getElementById('detectLang');
-      dl.textContent = srcLang === 'ja' ? '検出: 🇯🇵 日本語 → 🇺🇸 English' : '検出: 🇺🇸 English → 🇯🇵 日本語';
-    }
-
-    // Step 2: LLM translation
-    setStatus('🌐 翻訳中…', 'processing');
-    const tgtBadge = el.querySelector('.entry-right .lang-badge');
-    tgtBadge.className = `lang-badge ${tgtLang}`;
-    tgtBadge.textContent = tgtLang.toUpperCase();
-    document.getElementById('tgt-' + id).innerHTML = '翻訳中<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
-    document.getElementById('tgt-' + id).className = 'tgt-text loading-text';
-
-    const translation = await translateWithLLM(text, srcLang, tgtLang);
-    document.getElementById('tgt-' + id).className = 'tgt-text';
-    document.getElementById('tgt-' + id).textContent = translation;
-
-    results.scrollTop = results.scrollHeight;
-  } catch (err) {
-    console.error(err);
-    const srcEl = document.getElementById('src-' + id);
-    if (srcEl && srcEl.classList.contains('loading-text')) {
-      srcEl.className = 'src-text';
-      srcEl.textContent = '⚠ エラー';
-    }
-    const tgtEl = document.getElementById('tgt-' + id);
-    if (tgtEl) {
-      tgtEl.className = 'tgt-text';
-      tgtEl.textContent = '⚠ ' + err.message;
-    }
-    showError(err.message);
-  }
-
-  processing = false;
-  if (isListening) setStatus('● 聞き取り中…話してください', 'active');
+      <div><span class="lang-badge lang-badge-tgt other">…</span></div>
+      <div class="tgt-text tgt-placeholder" id="liveTgt">…</div>
+    </div>
+  `;
+  document.getElementById('results').appendChild(liveEl);
+  scroll();
 }
 
-// ── Main controls ──
-function toggleListening() { isListening ? stopListening() : startListening(); }
+function updateLiveDisplay(){
+  if(!liveEl) return;
+  const srcEl=liveEl.querySelector('.src-text');
+  if(!srcEl) return;
 
-async function startListening() {
-  if (!apiKey) {
-    setStatus('⚠ まず⚙設定からAPIキーを登録してください', 'warn');
+  // Show final text + interim in different styles
+  const finalHtml=escapeHtml(liveFinal);
+  const interimHtml=liveInterim?`<span class="interim-part">${escapeHtml(liveInterim)}</span>`:'';
+  srcEl.innerHTML=(finalHtml+(interimHtml?' '+interimHtml:'')).trim()||'…';
+  scroll();
+}
+
+function sealLiveEntry(){
+  if(!liveEl) return;
+  const text=(liveFinal).trim();
+  if(!text){
+    // Nothing final was captured, remove the live entry
+    liveEl.remove();
+    liveEl=null;
     return;
   }
 
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    showError('マイクへのアクセスが拒否されました。ブラウザ設定を確認してください。');
-    return;
-  }
+  // Final translate with complete text
+  doTranslate(text);
 
-  // Set up audio analysis for VAD
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaStreamSource(micStream);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  source.connect(analyser);
+  // Remove LIVE badge and seal
+  liveEl.classList.remove('live');
+  liveEl.classList.add('sealed');
+  const liveBadge=liveEl.querySelector('.live-badge');
+  if(liveBadge) liveBadge.remove();
 
-  isListening = true;
-  isSpeaking = false;
+  // Update source text to final only (remove interim styling)
+  const srcEl=liveEl.querySelector('.src-text');
+  if(srcEl) srcEl.textContent=text;
+
+  // Reset
+  liveEl=null;
+  liveFinal='';
+  liveInterim='';
+  translateVersion++;
+  scroll();
+}
+
+// ── Listening ──
+function toggleListening(){isListening?stopListening():startListening()}
+
+function startListening(){
+  if(!SR) return;
+  liveFinal='';liveInterim='';
+
+  recognition=new SR();
+  recognition.lang=getRL();
+  recognition.interimResults=true;
+  recognition.continuous=true;
+
+  recognition.onresult=(event)=>{
+    // Rebuild full text from all results
+    let allFinal='';
+    let currentInterim='';
+
+    for(let i=0;i<event.results.length;i++){
+      if(event.results[i].isFinal){
+        allFinal+=event.results[i][0].transcript;
+      } else {
+        currentInterim+=event.results[i][0].transcript;
+      }
+    }
+
+    liveFinal=allFinal;
+    liveInterim=currentInterim;
+
+    ensureLiveEntry();
+    updateLiveDisplay();
+
+    // Trigger translation (throttled)
+    triggerTranslate();
+
+    // Reset seal timer
+    clearTimeout(sealTimer);
+    sealTimer=setTimeout(()=>{
+      sealLiveEntry();
+    },SEAL_DELAY);
+  };
+
+  recognition.onerror=(event)=>{
+    if(event.error==='not-allowed'){showError('マイクへのアクセスが拒否されました。');stopListening()}
+    else if(event.error!=='aborted'&&event.error!=='no-speech') showError('音声認識エラー: '+event.error);
+  };
+
+  recognition.onend=()=>{
+    if(!isListening) return;
+    // Seal current and start fresh
+    if(liveFinal.trim()) sealLiveEntry();
+    try{
+      const r=new SR();
+      r.lang=currentMode==='auto'?autoCurrentLang:getRL();
+      r.interimResults=true;r.continuous=true;
+      r.onresult=recognition.onresult;r.onerror=recognition.onerror;r.onend=recognition.onend;
+      recognition=r;recognition.start();
+    }catch{}
+  };
+
+  recognition.start();
+  isListening=true;
   document.getElementById('micBtn').classList.add('listening');
-  document.getElementById('micIcon').textContent = '⏹';
-  setStatus('● 聞き取り中…話してください', 'active');
-  animateWave(true);
-  hideError();
-
-  startVADLoop();
+  document.getElementById('micIcon').textContent='⏹';
+  const st=document.getElementById('status');
+  st.textContent=currentMode==='auto'?'● 聞き取り中… 日本語・英語どちらでもOK':'● 聞き取り中…';
+  st.classList.add('active');
+  animWave(true);hideError();
 }
 
-function stopListening() {
-  isListening = false;
-  isSpeaking = false;
-  clearTimeout(silenceTimer);
-  silenceTimer = null;
-
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-  }
-  if (micStream) {
-    micStream.getTracks().forEach(t => t.stop());
-    micStream = null;
-  }
-  if (audioCtx) {
-    audioCtx.close().catch(() => {});
-    audioCtx = null;
-  }
-
+function stopListening(){
+  clearTimeout(sealTimer);clearTimeout(translateTimer);
+  if(liveFinal.trim()) sealLiveEntry();
+  isListening=false;
+  if(recognition){try{recognition.stop()}catch{}recognition=null}
   document.getElementById('micBtn').classList.remove('listening');
-  document.getElementById('micIcon').textContent = '🎤';
-  setStatus('🎤 タップして開始', '');
-  animateWave(false);
-  if (currentMode === 'auto') document.getElementById('detectLang').textContent = 'Whisper が言語を自動検出します';
+  document.getElementById('micIcon').textContent='🎤';
+  const st=document.getElementById('status');st.textContent='🎤 タップして開始';st.classList.remove('active');
+  animWave(false);
+  if(currentMode==='auto') document.getElementById('detectLang').textContent='自動言語検出: 待機中';
 }
 
-function clearAll() {
-  document.getElementById('results').innerHTML = '<div class="placeholder" id="placeholder">🎙 マイクボタンを押して話してください<br><span style="font-size:11px;color:#374151">Groq Whisper が固有名詞も高精度で認識します</span></div>';
+function clearAll(){
+  liveEl=null;liveFinal='';liveInterim='';
+  document.getElementById('results').innerHTML='<div class="placeholder" id="placeholder">🎙 マイクボタンを押して話してください<br><span class="sub">話しながらリアルタイムで翻訳されます</span></div>';
   document.getElementById('clearBtn').classList.remove('show');
 }
 
-function setStatus(msg, cls) {
-  const st = document.getElementById('status');
-  st.textContent = msg;
-  st.className = 'status' + (cls ? ' ' + cls : '');
-}
-function showError(m) { const e = document.getElementById('errorBox'); e.textContent = m; e.classList.add('show'); }
-function hideError() { document.getElementById('errorBox').classList.remove('show'); }
+function showError(m){const e=document.getElementById('errorBox');e.textContent=m;e.classList.add('show')}
+function hideError(){document.getElementById('errorBox').classList.remove('show')}
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
-updateColHeaders();
+updateCols();
+document.getElementById('autoIndicator').classList.add('show');
 </script>
 </body>
 </html>
