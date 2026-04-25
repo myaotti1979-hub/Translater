@@ -94,11 +94,18 @@
 
   <!-- Settings -->
   <div class="settings" id="settings">
+    <label>認識エンジン</label>
+    <div class="src-row">
+      <button class="src-btn active" id="btnEngGroq" onclick="setEngine('groq')">⚡ Groq+Gemini</button>
+      <button class="src-btn" id="btnEngGem" onclick="setEngine('gemini')">🔷 全部Gemini</button>
+    </div>
+    <div style="font-size:10px;color:#64748b;margin-top:4px" id="engineDesc">音声認識=Groq Whisper（無料）/ 翻訳・要約=Gemini Flash</div>
+
     <label>Groq API キー（<a href="https://console.groq.com" target="_blank" style="color:#818cf8">無料取得</a>）</label>
     <input type="password" id="keyInput" placeholder="gsk_..." oninput="saveKey()">
     <div class="key-status" id="keyStatus"></div>
 
-    <label>Gemini API キー — 要約用（<a href="https://aistudio.google.com/apikey" target="_blank" style="color:#818cf8">無料取得</a>）</label>
+    <label>Gemini API キー（<a href="https://aistudio.google.com/apikey" target="_blank" style="color:#818cf8">取得</a>）</label>
     <input type="password" id="gemKeyInput" placeholder="AIza..." oninput="saveGemKey()">
     <div class="key-status" id="gemKeyStatus"></div>
 
@@ -144,6 +151,7 @@
 <script>
 // ══════ State ══════
 let apiKey = '', geminiKey = '', nameHints = '', useMic = true, usePC = false;
+let sttEngine = 'groq'; // 'groq' or 'gemini'
 let isOn = false;
 let micStream = null, pcStream = null;
 let micTimer = null, pcTimer = null;
@@ -169,10 +177,11 @@ function sS(k,v){try{localStorage.setItem(k,v)}catch{}}
 // ══════ Init ══════
 (function(){
   apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
+  sttEngine = sG('stteng')||'groq';
   document.getElementById('keyInput').value = apiKey;
   document.getElementById('gemKeyInput').value = geminiKey;
   document.getElementById('namesInput').value = nameHints;
-  updateKeyUI(); updateGemKeyUI();
+  updateKeyUI(); updateGemKeyUI(); updateEngineUI();
 })();
 
 function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
@@ -191,8 +200,19 @@ function toggleSrc(s){
 function saveGemKey(){geminiKey=document.getElementById('gemKeyInput').value.trim();sS('gemk',geminiKey);updateGemKeyUI()}
 function updateGemKeyUI(){
   const el=document.getElementById('gemKeyStatus');
-  if(!geminiKey)el.innerHTML='<span class="key-ng">⚠ 要約機能を使うにはキーが必要です</span>';
+  if(!geminiKey)el.innerHTML='<span class="key-ng">⚠ APIキーを入力してください</span>';
   else el.innerHTML='<span class="key-ok">✓ 設定済み</span>';
+}
+function setEngine(e){
+  sttEngine=e;sS('stteng',e);updateEngineUI();
+  if(isOn){stop();start()}
+}
+function updateEngineUI(){
+  document.getElementById('btnEngGroq').classList.toggle('active',sttEngine==='groq');
+  document.getElementById('btnEngGem').classList.toggle('active',sttEngine==='gemini');
+  document.getElementById('engineDesc').textContent=
+    sttEngine==='groq'?'音声認識=Groq Whisper（無料）/ 翻訳・要約=Gemini Flash'
+                      :'音声認識・翻訳・要約 すべてGemini Flash（Groq枠を消費しません）';
 }
 
 // ══════ Scroll — always keep bottom visible ══════
@@ -217,26 +237,51 @@ async function whisper(blob){
   return r.json();
 }
 
-// ══════ Groq Llama Translation ══════
-async function llamaTranslate(text, fromLang, toLang){
-  const fromName = fromLang==='en'?'English':'Japanese';
-  const toName = toLang==='en'?'English':'Japanese';
-  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+// ══════ Gemini Audio Transcription ══════
+async function geminiTranscribe(blob){
+  if(!geminiKey) throw new Error('No Gemini key');
+  const base64=await new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('Read failed'));
+    r.readAsDataURL(blob);
+  });
+  const namePrompt=nameHints.trim()?`\nParticipant names for reference: ${nameHints.trim()}`:'';
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
     method:'POST',
-    headers:{'Authorization':'Bearer '+apiKey,'Content-Type':'application/json'},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      model:'llama-3.3-70b-versatile',
-      messages:[
-        {role:'system',content:`You are a professional real-time meeting translator. Translate ${fromName} to natural ${toName}. Output ONLY the translation. No quotes, no explanation. Keep it natural and concise for a business meeting context.`},
-        {role:'user',content:text}
-      ],
-      max_tokens:500,
-      temperature:0.2
+      contents:[{parts:[
+        {inlineData:{mimeType:'audio/webm',data:base64}},
+        {text:`Transcribe this audio exactly as spoken. Output ONLY the transcription text, nothing else. If silent, output nothing.${namePrompt}`}
+      ]}],
+      generationConfig:{maxOutputTokens:500,temperature:0.1}
     })
   });
   if(!r.ok) throw new Error(r.status);
   const d=await r.json();
-  return d.choices[0].message.content.trim();
+  const text=(d.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
+  // Detect language from text
+  const lang=detectLang(text)==='ja'?'ja':'en';
+  return {text,language:lang};
+}
+
+// ══════ Gemini Flash Translation ══════
+async function llamaTranslate(text, fromLang, toLang){
+  if(!geminiKey) throw new Error('No Gemini key');
+  const fromName = fromLang==='en'?'English':'Japanese';
+  const toName = toLang==='en'?'English':'Japanese';
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      contents:[{parts:[{text:`You are a professional real-time meeting translator. Translate ${fromName} to natural ${toName}. Output ONLY the translation. No quotes, no explanation. Keep it natural and concise for a business meeting context.\n\n${text}`}]}],
+      generationConfig:{maxOutputTokens:500,temperature:0.2}
+    })
+  });
+  if(!r.ok) throw new Error(r.status);
+  const d=await r.json();
+  return (d.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
 }
 
 // ══════ Language detection ══════
@@ -428,10 +473,10 @@ function startCapture(stream, sType){
       }
 
       try{
-        const result=await whisper(blob);
+        const result = sttEngine==='gemini' ? await geminiTranscribe(blob) : await whisper(blob);
         const text=(result.text||'').trim();
 
-        // Filter Whisper hallucinations on silence
+        // Filter hallucinations on silence
         if(!text||text.length<2||/^[\.\s…]+$/.test(text)||text==='ご視聴ありがとうございました'||text==='Thanks for watching!'||text.toLowerCase()==='thank you.'){
           handleSilence(sType);
           doChunk();return;
@@ -502,7 +547,8 @@ function handleSilence(sType){
 function toggle(){isOn?stop():start()}
 
 async function start(){
-  if(!apiKey){showErr('⚙設定からGroq APIキーを入力してください');return}
+  if(sttEngine==='groq'&&!apiKey){showErr('⚙設定からGroq APIキーを入力してください');return}
+  if(!geminiKey){showErr('⚙設定からGemini APIキーを入力してください');return}
   isOn=true;
   document.getElementById('recBtn').classList.add('on');
   document.getElementById('recIcon').textContent='⏹';
