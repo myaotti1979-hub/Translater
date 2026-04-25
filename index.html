@@ -3,684 +3,457 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Meeting Translator — リアルタイム会議翻訳</title>
+<title>Meeting Translator</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;800&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
-  body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:linear-gradient(170deg,#0f172a 0%,#1a1038 55%,#0f172a 100%);color:#e2e8f0;font-family:'Noto Sans JP','Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
+  body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:#0f172a;color:#e2e8f0;font-family:'Noto Sans JP','Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
 
   @keyframes ripple{0%{transform:scale(.8);opacity:.6}100%{transform:scale(2.8);opacity:0}}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
-  @keyframes livePulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes livePulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-  .header{text-align:center;padding:14px 16px 4px}
-  .header-label{font-size:10px;letter-spacing:5px;color:#818cf8;text-transform:uppercase;font-weight:700;margin-bottom:3px}
-  .header h1{font-size:17px;font-weight:800;background:linear-gradient(135deg,#e0e7ff,#c4b5fd,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  /* Top bar */
+  .top-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(99,102,241,0.15)}
+  .top-bar h1{font-size:14px;font-weight:700;color:#a5b4fc}
+  .top-bar button{background:none;border:1px solid rgba(99,102,241,0.25);color:#94a3b8;font-size:18px;width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 
-  /* Settings Panel */
-  .settings-toggle{display:flex;justify-content:center;padding:6px 16px 0}
-  .settings-toggle button{background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;font-size:11px;font-weight:600;padding:5px 14px;border-radius:16px;cursor:pointer;font-family:inherit}
-  .settings-panel{display:none;padding:10px 16px;margin:6px 16px;border-radius:12px;background:rgba(30,41,59,0.8);border:1px solid rgba(99,102,241,0.2)}
-  .settings-panel.show{display:block}
-  .settings-panel label{display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px;margin-top:10px}
-  .settings-panel label:first-child{margin-top:0}
-  .settings-panel input,.settings-panel textarea{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(99,102,241,0.25);background:rgba(15,23,42,0.6);color:#e2e8f0;font-size:13px;font-family:inherit}
-  .settings-panel input:focus,.settings-panel textarea:focus{outline:none;border-color:#818cf8}
-  .settings-panel textarea{height:48px;resize:vertical}
-  .settings-row{display:flex;gap:8px;align-items:center;margin-top:10px}
-  .settings-row .src-toggle{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;text-align:center;font-family:inherit;transition:all .2s}
-  .src-toggle.active{background:rgba(99,102,241,0.2);border-color:#818cf8;color:#c7d2fe}
-  .engine-row{display:flex;gap:6px;margin-top:10px}
-  .engine-btn{flex:1;padding:7px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;text-align:center;font-family:inherit;transition:all .2s}
-  .engine-btn.active{background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.4);color:#86efac}
-  .key-status{font-size:10px;margin-top:4px}
-  .key-ok{color:#86efac}
-  .key-ng{color:#fca5a5}
+  /* Settings */
+  .settings{display:none;padding:12px 16px;background:rgba(30,41,59,0.9);border-bottom:1px solid rgba(99,102,241,0.15)}
+  .settings.show{display:block}
+  .settings label{display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:3px;margin-top:10px}
+  .settings label:first-child{margin-top:0}
+  .settings input,.settings textarea{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(99,102,241,0.25);background:rgba(15,23,42,0.8);color:#e2e8f0;font-size:13px;font-family:inherit}
+  .settings input:focus,.settings textarea:focus{outline:none;border-color:#818cf8}
+  .settings textarea{height:40px;resize:none}
+  .key-status{font-size:10px;margin-top:3px}
+  .key-ok{color:#86efac}.key-ng{color:#fca5a5}
+  .src-row{display:flex;gap:6px;margin-top:10px}
+  .src-btn{flex:1;padding:7px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;text-align:center;font-family:inherit}
+  .src-btn.active{background:rgba(99,102,241,0.2);border-color:#818cf8;color:#c7d2fe}
 
-  /* Mode Tabs */
-  .mode-tabs{display:flex;gap:6px;padding:8px 16px 4px;justify-content:center;flex-wrap:wrap}
-  .mode-tab{padding:6px 12px;border-radius:20px;border:1px solid rgba(99,102,241,0.2);background:rgba(30,41,59,0.5);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;transition:all .25s;font-family:inherit;white-space:nowrap}
-  .mode-tab.active{background:rgba(99,102,241,0.2);border-color:#818cf8;color:#c7d2fe}
-  .mode-tab.auto-tab.active{background:linear-gradient(135deg,rgba(99,102,241,0.2),rgba(244,114,182,0.2));border-color:#a78bfa;color:#e9d5ff}
+  /* Controls */
+  .ctrl{display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px}
+  .rec-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(99,102,241,0.4);transition:all .3s;position:relative}
+  .rec-btn.on{background:linear-gradient(135deg,#dc2626,#f43f5e);box-shadow:0 0 28px rgba(244,63,94,0.5)}
+  .rec-btn .rr{position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(244,63,94,0.4);animation:ripple 1.5s ease-out infinite;display:none}
+  .rec-btn .rr:nth-child(2){animation-delay:.5s;border-color:rgba(244,63,94,0.3)}
+  .rec-btn.on .rr{display:block}
+  .ctrl-status{font-size:11px;color:#64748b;font-weight:600}
+  .ctrl-status.on{color:#f43f5e}
 
-  .auto-indicator{display:none;text-align:center;padding:3px 16px;font-size:10px;color:#a78bfa}
-  .auto-indicator.show{display:block}
-  .detect-lang{display:inline-block;padding:2px 10px;border-radius:10px;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.2);font-weight:600}
-
-  .wave{display:flex;align-items:center;justify-content:center;gap:2.5px;height:26px;margin:4px 0}
-  .wave-bar{width:2.5px;border-radius:2px;background-color:#475569;height:4px;transition:height .5s ease;opacity:.25}
-  .wave-bar.active{background-color:#f43f5e;transition:height .1s ease}
-
-  .controls{display:flex;justify-content:center;align-items:center;padding:0 20px 4px;position:relative}
-  .mic-btn{width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(99,102,241,0.4);transition:all .3s;position:relative}
-  .mic-btn.listening{background:linear-gradient(135deg,#dc2626,#f43f5e);box-shadow:0 0 32px rgba(244,63,94,0.5)}
-  .mic-btn .rr{position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(244,63,94,0.4);animation:ripple 1.5s ease-out infinite;display:none}
-  .mic-btn .rr:nth-child(2){animation-delay:.5s;border-color:rgba(244,63,94,0.3)}
-  .mic-btn.listening .rr{display:block}
-  .clear-btn{position:absolute;right:20px;width:34px;height:34px;border-radius:50%;border:1px solid #334155;background:rgba(30,27,75,0.6);color:#94a3b8;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center}
-  .clear-btn.show{display:flex}
-
-  .status{text-align:center;font-size:11px;color:#64748b;font-weight:600;margin-bottom:4px}
-  .status.active{color:#f43f5e}
   .error-box{margin:0 16px 4px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;font-size:12px;text-align:center;display:none}
   .error-box.show{display:block}
 
-  .col-headers{display:flex;padding:0 16px;margin-bottom:4px;gap:8px}
-  .col-header{flex:1;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px;text-align:center}
-  .col-header.src{color:#818cf8;background:rgba(99,102,241,0.1)}
-  .col-header.tgt{color:#f472b6;background:rgba(244,114,182,0.1)}
+  /* Feed */
+  .feed{flex:1;overflow-y:auto;padding:8px 16px 80px;display:flex;flex-direction:column;gap:10px}
+  .feed-empty{text-align:center;color:#475569;margin-top:40px;font-size:14px;line-height:2}
 
-  .results{flex:1;overflow-y:auto;padding:0 16px 24px;display:flex;flex-direction:column;gap:7px}
-  .placeholder{text-align:center;color:#475569;margin-top:20px;font-size:13px;line-height:2}
-  .placeholder .sub{font-size:11px;color:#374151}
+  /* Block */
+  .block{background:rgba(30,41,59,0.6);border-radius:14px;padding:14px 16px;animation:fadeUp .25s ease-out;border:1px solid rgba(99,102,241,0.1)}
+  .block.live{border-color:rgba(99,102,241,0.3);background:rgba(30,41,59,0.8)}
+  .block-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .block-src{font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;color:#64748b;background:rgba(100,116,139,0.15)}
+  .block-live{font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;color:#f43f5e;background:rgba(244,63,94,0.15);animation:livePulse 1.2s infinite}
+  .block-time{font-size:9px;color:#475569;margin-left:auto}
 
-  .entry{display:flex;gap:8px;animation:fadeUp .3s ease-out}
-  .entry-left,.entry-right{flex:1;border-radius:12px;padding:10px 12px;min-height:40px;word-break:break-word}
-  .entry-left{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15)}
-  .entry-right{background:rgba(244,114,182,0.14);border:1px solid rgba(244,114,182,0.25)}
-  .lang-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-bottom:4px}
-  .lang-badge.en{color:#818cf8;background:rgba(99,102,241,0.15)}
-  .lang-badge.ja{color:#f472b6;background:rgba(244,114,182,0.15)}
-  .lang-badge.other{color:#a78bfa;background:rgba(167,139,250,0.15)}
-  .src-icon{font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:4px;color:#64748b;background:rgba(100,116,139,0.15)}
-  .src-text{font-size:14px;line-height:1.6;color:#cbd5e1}
-  .tgt-text{font-size:15px;line-height:1.7;color:#ffffff;font-weight:700}
+  /* Japanese translation - the star */
+  .block-ja{font-size:18px;line-height:1.7;color:#ffffff;font-weight:700;margin-bottom:6px;min-height:24px}
+  .block-ja.waiting{font-size:13px;color:#818cf8;font-weight:400}
 
-  .entry.live .entry-left{border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.12)}
-  .entry.live .entry-right{border-color:rgba(244,114,182,0.4);background:rgba(244,114,182,0.16)}
-  .live-badge{display:inline-block;font-size:8px;font-weight:700;color:#f43f5e;background:rgba(244,63,94,0.2);padding:1px 6px;border-radius:4px;margin-left:6px;animation:livePulse 1.2s ease-in-out infinite}
+  /* English original - supporting role */
+  .block-en{font-size:12px;line-height:1.5;color:#e2e8f0;border-top:1px solid rgba(99,102,241,0.1);padding-top:6px}
 
-  .tgt-placeholder{color:#818cf8;font-size:12px;font-weight:400}
-  .tgt-placeholder .dot{width:4px;height:4px;border-radius:50%;background:#818cf8;display:inline-block;margin-left:2px}
-  .tgt-placeholder .dot:nth-child(1){animation:dotBounce 1s ease-in-out 0s infinite}
-  .tgt-placeholder .dot:nth-child(2){animation:dotBounce 1s ease-in-out .15s infinite}
-  .tgt-placeholder .dot:nth-child(3){animation:dotBounce 1s ease-in-out .3s infinite}
+  /* Scroll anchor */
+  .scroll-anchor{height:1px;flex-shrink:0}
 </style>
 </head>
 <body>
 <div id="app">
-  <div class="header">
-    <div class="header-label">Meeting Translator</div>
-    <h1>リアルタイム会議翻訳</h1>
+  <!-- Top bar -->
+  <div class="top-bar">
+    <h1>🌐 Meeting Translator</h1>
+    <div style="display:flex;gap:6px">
+      <button onclick="saveTranscript()" title="議事録を保存">💾</button>
+      <button onclick="clearAll()" title="クリア">🗑</button>
+      <button onclick="toggleSettings()" title="設定">⚙</button>
+    </div>
   </div>
 
   <!-- Settings -->
-  <div class="settings-toggle"><button onclick="toggleSettings()">⚙ 設定</button></div>
-  <div class="settings-panel" id="settingsPanel">
-    <label>認識エンジン</label>
-    <div class="engine-row">
-      <button class="engine-btn" id="engineBrowser" onclick="setEngine('browser')">🌐 ブラウザ内蔵（無料）</button>
-      <button class="engine-btn active" id="engineGroq" onclick="setEngine('groq')">⚡ Groq Whisper（高精度）</button>
-    </div>
+  <div class="settings" id="settings">
+    <label>Groq API キー（<a href="https://console.groq.com" target="_blank" style="color:#818cf8">無料取得</a>）</label>
+    <input type="password" id="keyInput" placeholder="gsk_..." oninput="saveKey()">
+    <div class="key-status" id="keyStatus"></div>
 
-    <div id="groqSettings">
-      <label>Groq API キー（<a href="https://console.groq.com" target="_blank" style="color:#818cf8">無料取得</a>）</label>
-      <input type="password" id="apiKeyInput" placeholder="gsk_..." oninput="saveApiKey()">
-      <div class="key-status" id="keyStatus"></div>
-
-      <label>参加者の名前（人名認識ヒント）</label>
-      <textarea id="nameHints" placeholder="田中太郎, John Smith, 佐藤花子..." oninput="saveNames()"></textarea>
-    </div>
+    <label>参加者の名前（人名認識ヒント）</label>
+    <textarea id="namesInput" placeholder="田中, Smith, 佐藤..." oninput="saveNames()"></textarea>
 
     <label>音声ソース</label>
-    <div class="settings-row">
-      <button class="src-toggle active" id="srcMic" onclick="toggleSrc('mic')">🎙 マイク（自分）</button>
-      <button class="src-toggle" id="srcPC" onclick="toggleSrc('pc')">🖥 PC音声（相手）</button>
+    <div class="src-row">
+      <button class="src-btn active" id="btnMic" onclick="toggleSrc('mic')">🎙 マイク</button>
+      <button class="src-btn" id="btnPC" onclick="toggleSrc('pc')">🖥 PC音声（Zoom等）</button>
     </div>
   </div>
 
-  <div class="mode-tabs">
-    <button class="mode-tab auto-tab active" onclick="setMode('auto')">🔄 自動 日⇔英</button>
-    <button class="mode-tab" onclick="setMode('en-ja')">🇺🇸→🇯🇵</button>
-    <button class="mode-tab" onclick="setMode('ja-en')">🇯🇵→🇺🇸</button>
+  <!-- Controls -->
+  <div class="ctrl">
+    <button class="rec-btn" id="recBtn" onclick="toggle()">
+      <span class="rr"></span><span class="rr"></span>
+      <span id="recIcon">🎤</span>
+    </button>
+    <span class="ctrl-status" id="ctrlStatus">タップして開始</span>
   </div>
+  <div class="error-box" id="errBox"></div>
 
-  <div class="auto-indicator" id="autoIndicator"><span class="detect-lang" id="detectLang">自動言語検出: 待機中</span></div>
-
-  <div class="wave" id="wave"></div>
-  <div class="controls">
-    <button class="mic-btn" id="micBtn" onclick="toggleListening()"><span class="rr"></span><span class="rr"></span><span id="micIcon">🎤</span></button>
-    <button class="clear-btn" id="clearBtn" onclick="clearAll()">🗑</button>
+  <!-- Feed -->
+  <div class="feed" id="feed">
+    <div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>
   </div>
-  <div class="status" id="status">🎤 タップして開始</div>
-  <div class="error-box" id="errorBox"></div>
-
-  <div class="col-headers">
-    <div class="col-header src" id="colSrc">🎙 聞き取り（自動検出）</div>
-    <div class="col-header tgt" id="colTgt">💬 翻訳</div>
-  </div>
-
-  <div class="results" id="results">
-    <div class="placeholder" id="placeholder">🎙 マイクボタンを押して話してください<br><span class="sub">話しながらリアルタイムで翻訳されます</span></div>
-  </div>
+  <div class="scroll-anchor" id="scrollAnchor"></div>
 </div>
 
 <script>
-// ══════ Config ══════
-let engine = 'groq'; // 'groq' or 'browser'
-let apiKey = '';
-let nameHints = '';
-let useMic = true, usePC = false;
-let currentMode = 'auto';
-let autoCurrentLang = 'ja-JP';
-let isListening = false;
-
-// Groq audio state
+// ══════ State ══════
+let apiKey = '', nameHints = '', useMic = true, usePC = false;
+let isOn = false;
 let micStream = null, pcStream = null;
-let micRecording = false, pcRecording = false;
-// Groq chunk timing is defined inside startGroqCapture
 let micTimer = null, pcTimer = null;
 
-// Browser speech state
-let recognition = null;
-let liveFinal = '', liveInterim = '';
+// Per-source block state
+const src = {
+  mic: { el: null, text: '', started: 0, silentCount: 0, sealTimer: null },
+  pc:  { el: null, text: '', started: 0, silentCount: 0, sealTimer: null }
+};
 
-// UI state
-let liveEl = null;
-let waveInterval = null, waveTick = 0;
-let translateVersion = 0, lastTranslateTime = 0;
-const TRANSLATE_THROTTLE = 600;
-let translateTimer = null;
-const SEAL_DELAY = 2500;
-let sealTimer = null;
+const CHUNK_SEC = 3;
+const CHUNK_MS = CHUNK_SEC * 1000;
+const MAX_BLOCK_SEC = 25;   // auto-seal after 25 seconds
+const SEAL_SILENCE = 1;     // seal after 1 silent chunk (3 seconds)
 
-// ══════ Storage helpers ══════
-function sGet(k) { try { return localStorage.getItem(k) } catch { return null } }
-function sSet(k, v) { try { localStorage.setItem(k, v) } catch {} }
+// Transcript log
+let transcript = [];
+
+// ══════ Storage ══════
+function sG(k){try{return localStorage.getItem(k)}catch{return null}}
+function sS(k,v){try{localStorage.setItem(k,v)}catch{}}
 
 // ══════ Init ══════
-(function init() {
-  apiKey = sGet('groq_key') || '';
-  nameHints = sGet('name_hints') || '';
-  engine = sGet('engine') || 'groq';
-  document.getElementById('apiKeyInput').value = apiKey;
-  document.getElementById('nameHints').value = nameHints;
-  updateKeyStatus();
-  updateEngineUI();
-  updateCols();
-  document.getElementById('autoIndicator').classList.add('show');
-
-  // Wave
-  const w = document.getElementById('wave');
-  for (let i = 0; i < 28; i++) { const b = document.createElement('div'); b.className = 'wave-bar'; w.appendChild(b); }
+(function(){
+  apiKey = sG('gk')||''; nameHints = sG('nh')||'';
+  document.getElementById('keyInput').value = apiKey;
+  document.getElementById('namesInput').value = nameHints;
+  updateKeyUI();
 })();
 
-// ══════ Settings ══════
-function toggleSettings() {
-  document.getElementById('settingsPanel').classList.toggle('show');
+function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
+function saveKey(){apiKey=document.getElementById('keyInput').value.trim();sS('gk',apiKey);updateKeyUI()}
+function saveNames(){nameHints=document.getElementById('namesInput').value;sS('nh',nameHints)}
+function updateKeyUI(){
+  const el=document.getElementById('keyStatus');
+  if(!apiKey)el.innerHTML='<span class="key-ng">⚠ APIキーを入力してください</span>';
+  else if(apiKey.startsWith('gsk_'))el.innerHTML='<span class="key-ok">✓ 設定済み</span>';
+  else el.innerHTML='<span class="key-ng">⚠ gsk_ で始まるキーを入力</span>';
 }
-function setEngine(e) {
-  engine = e; sSet('engine', e); updateEngineUI();
-  if (isListening) { stopListening(); startListening(); }
-}
-function updateEngineUI() {
-  document.getElementById('engineBrowser').classList.toggle('active', engine === 'browser');
-  document.getElementById('engineGroq').classList.toggle('active', engine === 'groq');
-  document.getElementById('groqSettings').style.display = engine === 'groq' ? 'block' : 'none';
-  // PC audio only available with Groq
-  document.getElementById('srcPC').style.opacity = engine === 'groq' ? '1' : '0.4';
-}
-function saveApiKey() {
-  apiKey = document.getElementById('apiKeyInput').value.trim();
-  sSet('groq_key', apiKey);
-  updateKeyStatus();
-}
-function updateKeyStatus() {
-  const el = document.getElementById('keyStatus');
-  if (!apiKey) { el.innerHTML = '<span class="key-ng">⚠ APIキーを入力してください</span>'; }
-  else if (apiKey.startsWith('gsk_')) { el.innerHTML = '<span class="key-ok">✓ キー設定済み</span>'; }
-  else { el.innerHTML = '<span class="key-ng">⚠ gsk_ で始まるキーを入力してください</span>'; }
-}
-function saveNames() {
-  nameHints = document.getElementById('nameHints').value;
-  sSet('name_hints', nameHints);
-}
-function toggleSrc(src) {
-  if (src === 'mic') { useMic = !useMic; document.getElementById('srcMic').classList.toggle('active', useMic); }
-  if (src === 'pc') {
-    if (engine !== 'groq') { showError('PC音声はGroq Whisperモードでのみ使用できます'); return; }
-    usePC = !usePC; document.getElementById('srcPC').classList.toggle('active', usePC);
-  }
+function toggleSrc(s){
+  if(s==='mic'){useMic=!useMic;document.getElementById('btnMic').classList.toggle('active',useMic)}
+  if(s==='pc'){usePC=!usePC;document.getElementById('btnPC').classList.toggle('active',usePC)}
 }
 
-// ══════ Mode ══════
-function setMode(m) {
-  const w = isListening; if (w) stopListening();
-  currentMode = m;
-  document.querySelectorAll('.mode-tab').forEach((t, i) => t.classList.toggle('active', ['auto','en-ja','ja-en'][i] === m));
-  document.getElementById('autoIndicator').classList.toggle('show', m === 'auto');
-  updateCols(); if (w) startListening();
-}
-function updateCols() {
-  const c1 = document.getElementById('colSrc'), c2 = document.getElementById('colTgt');
-  if (currentMode === 'auto') { c1.textContent = '🎙 聞き取り（自動検出）'; c2.textContent = '💬 翻訳'; }
-  else if (currentMode === 'en-ja') { c1.textContent = '🎙 English'; c2.textContent = '🇯🇵 日本語'; }
-  else { c1.textContent = '🎙 日本語'; c2.textContent = '🇺🇸 English'; }
-}
-function detectLang(t) {
-  const jp = (t.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF]/g) || []).length;
-  const en = (t.match(/[a-zA-Z]/g) || []).length;
-  return (jp + en === 0) ? 'ja' : (jp / (jp + en) > 0.3 ? 'ja' : 'en');
-}
-function getPair(d) {
-  if (currentMode === 'en-ja') return { s: 'en', t: 'ja' };
-  if (currentMode === 'ja-en') return { s: 'ja', t: 'en' };
-  return d === 'ja' ? { s: 'ja', t: 'en' } : { s: 'en', t: 'ja' };
+// ══════ Scroll — always keep bottom visible ══════
+function scrollDown(){
+  document.getElementById('scrollAnchor').scrollIntoView({behavior:'smooth',block:'end'});
 }
 
-// ══════ Wave ══════
-const waveBars = document.querySelectorAll ? document.getElementById('wave')?.children : [];
-function animWave(on) {
-  const bars = document.getElementById('wave').children;
-  if (on && !waveInterval) {
-    waveInterval = setInterval(() => { waveTick++; for (let i = 0; i < bars.length; i++) { bars[i].classList.add('active'); bars[i].style.height = (8 + Math.abs(Math.sin((waveTick + i) * .45)) * 24 + Math.sin(i * .8) * 6) + 'px'; bars[i].style.opacity = .6 + Math.abs(Math.sin((waveTick + i) * .45)) * .4; } }, 120);
-  } else if (!on) { clearInterval(waveInterval); waveInterval = null; for (let i = 0; i < bars.length; i++) { bars[i].classList.remove('active'); bars[i].style.height = '4px'; bars[i].style.opacity = '.25'; } }
-}
+// ══════ Time ══════
+function timeStr(){const d=new Date();return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')}
 
-// ══════ Scroll ══════
-function scroll() { const r = document.getElementById('results'); requestAnimationFrame(() => r.scrollTop = r.scrollHeight); }
-
-// ══════ Translation (MyMemory) ══════
-async function translateAPI(text, src, tgt) {
-  const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}`);
-  const d = await r.json();
-  if (d.responseStatus === 200 && d.responseData?.translatedText) return d.responseData.translatedText;
-  throw new Error('fail');
-}
-
-// ══════ Groq Whisper API ══════
-async function whisperTranscribe(audioBlob) {
-  if (!apiKey) throw new Error('No API key');
-  const form = new FormData();
-  form.append('file', audioBlob, 'audio.webm');
-  form.append('model', 'whisper-large-v3-turbo');
-  form.append('response_format', 'verbose_json');
-  if (nameHints.trim()) {
-    form.append('prompt', `Meeting participants: ${nameHints.trim()}`);
-  }
-  // Don't set language — let Whisper auto-detect
-
-  const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}` },
-    body: form
+// ══════ Groq Whisper ══════
+async function whisper(blob){
+  const form=new FormData();
+  form.append('file',blob,'a.webm');
+  form.append('model','whisper-large-v3-turbo');
+  form.append('response_format','verbose_json');
+  if(nameHints.trim()) form.append('prompt','Meeting participants: '+nameHints.trim());
+  const r=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{
+    method:'POST',headers:{'Authorization':'Bearer '+apiKey},body:form
   });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error(`Groq API error: ${r.status} ${err}`);
-  }
-  return await r.json();
+  if(!r.ok) throw new Error(r.status+' '+await r.text());
+  return r.json();
 }
 
-// ══════ Live Entry ══════
-function ensureLiveEntry(sourceIcon) {
-  if (liveEl) return;
-  const ph = document.getElementById('placeholder'); if (ph) ph.remove();
-  document.getElementById('clearBtn').classList.add('show');
-  liveEl = document.createElement('div');
-  liveEl.className = 'entry live';
-  const icon = sourceIcon === 'pc' ? '🖥' : '🎙';
-  liveEl.innerHTML = `
-    <div class="entry-left">
-      <div><span class="lang-badge lang-badge-src other">…</span><span class="src-icon">${icon}</span><span class="live-badge">LIVE</span></div>
-      <div class="src-text">…</div>
+// ══════ Groq Llama Translation ══════
+async function llamaTranslate(text, fromLang, toLang){
+  const fromName = fromLang==='en'?'English':'Japanese';
+  const toName = toLang==='en'?'English':'Japanese';
+  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+apiKey,'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'llama-3.3-70b-versatile',
+      messages:[
+        {role:'system',content:`You are a professional real-time meeting translator. Translate ${fromName} to natural ${toName}. Output ONLY the translation. No quotes, no explanation. Keep it natural and concise for a business meeting context.`},
+        {role:'user',content:text}
+      ],
+      max_tokens:500,
+      temperature:0.2
+    })
+  });
+  if(!r.ok) throw new Error(r.status);
+  const d=await r.json();
+  return d.choices[0].message.content.trim();
+}
+
+// ══════ Language detection ══════
+function detectLang(t){
+  const jp=(t.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/g)||[]).length;
+  const en=(t.match(/[a-zA-Z]/g)||[]).length;
+  return (jp+en===0)?'ja':(jp/(jp+en)>0.3?'ja':'en');
+}
+
+// ══════ Block management ══════
+function createBlock(sType){
+  const s=src[sType];
+  // Seal existing first
+  if(s.el) sealBlock(sType);
+
+  const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
+
+  s.text=''; s.started=Date.now(); s.silentCount=0;
+  s.el=document.createElement('div');
+  s.el.className='block live';
+  const icon=sType==='pc'?'🖥':'🎙';
+  s.el.innerHTML=`
+    <div class="block-head">
+      <span class="block-src">${icon} ${sType==='pc'?'相手':'自分'}</span>
+      <span class="block-live">LIVE</span>
+      <span class="block-time">${timeStr()}</span>
     </div>
-    <div class="entry-right">
-      <div><span class="lang-badge lang-badge-tgt other">…</span></div>
-      <div class="tgt-text tgt-placeholder">…</div>
-    </div>`;
-  document.getElementById('results').appendChild(liveEl);
-  scroll();
+    <div class="block-ja waiting">聞き取り中…</div>
+    <div class="block-en"></div>`;
+  document.getElementById('feed').appendChild(s.el);
+  scrollDown();
 }
 
-function updateLiveSrc(text) {
-  if (!liveEl) return;
-  const el = liveEl.querySelector('.src-text');
-  if (el) el.textContent = text || '…';
-  scroll();
+function updateBlock(sType, fullText, translation){
+  const s=src[sType];
+  if(!s.el) return;
+  const enEl=s.el.querySelector('.block-en');
+  const jaEl=s.el.querySelector('.block-ja');
+  if(enEl) enEl.textContent=fullText;
+  if(jaEl && translation){jaEl.className='block-ja';jaEl.textContent=translation;}
+  scrollDown();
 }
 
-function updateLiveTgt(text) {
-  if (!liveEl) return;
-  const el = liveEl.querySelector('.tgt-text');
-  if (el) { el.className = 'tgt-text'; el.textContent = text; }
-  scroll();
-}
+function sealBlock(sType){
+  const s=src[sType];
+  if(!s.el) return;
+  s.el.classList.remove('live');
+  const lb=s.el.querySelector('.block-live');if(lb)lb.remove();
 
-function updateLiveBadges(pair) {
-  if (!liveEl) return;
-  const s = liveEl.querySelector('.lang-badge-src');
-  const t = liveEl.querySelector('.lang-badge-tgt');
-  if (s) { s.className = 'lang-badge lang-badge-src ' + (pair.s === 'ja' ? 'ja' : pair.s === 'en' ? 'en' : 'other'); s.textContent = pair.s.toUpperCase(); }
-  if (t) { t.className = 'lang-badge lang-badge-tgt ' + (pair.t === 'ja' ? 'ja' : pair.t === 'en' ? 'en' : 'other'); t.textContent = pair.t.toUpperCase(); }
-}
-
-function sealLiveEntry() {
-  if (!liveEl) return;
-  const srcEl = liveEl.querySelector('.src-text');
-  if (!srcEl || srcEl.textContent === '…') { liveEl.remove(); liveEl = null; return; }
-  liveEl.classList.remove('live');
-  const lb = liveEl.querySelector('.live-badge'); if (lb) lb.remove();
-  liveEl = null; liveFinal = ''; liveInterim = '';
-  translateVersion++; scroll();
-}
-
-function addSealedEntry(text, pair, sourceIcon, translation) {
-  const ph = document.getElementById('placeholder'); if (ph) ph.remove();
-  document.getElementById('clearBtn').classList.add('show');
-  const icon = sourceIcon === 'pc' ? '🖥' : '🎙';
-  const sb = pair.s === 'ja' ? 'ja' : pair.s === 'en' ? 'en' : 'other';
-  const tb = pair.t === 'ja' ? 'ja' : pair.t === 'en' ? 'en' : 'other';
-  const el = document.createElement('div');
-  el.className = 'entry';
-  el.innerHTML = `
-    <div class="entry-left">
-      <div><span class="lang-badge ${sb}">${pair.s.toUpperCase()}</span><span class="src-icon">${icon}</span></div>
-      <div class="src-text">${escapeHtml(text)}</div>
-    </div>
-    <div class="entry-right">
-      <div><span class="lang-badge ${tb}">${pair.t.toUpperCase()}</span></div>
-      <div class="tgt-text">${translation ? escapeHtml(translation) : '<span class="tgt-placeholder">翻訳中<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>'}</div>
-    </div>`;
-  document.getElementById('results').appendChild(el);
-  scroll();
-  if (!translation) {
-    translateAPI(text, pair.s, pair.t).then(t => {
-      const tgtEl = el.querySelector('.tgt-text');
-      if (tgtEl) { tgtEl.className = 'tgt-text'; tgtEl.textContent = t; }
-      scroll();
-    }).catch(() => {
-      const tgtEl = el.querySelector('.tgt-text');
-      if (tgtEl) { tgtEl.className = 'tgt-text'; tgtEl.textContent = '⚠ 翻訳失敗'; }
+  // Save to transcript
+  if(s.text.trim()){
+    const jaEl=s.el.querySelector('.block-ja');
+    const timeEl=s.el.querySelector('.block-time');
+    const ja=jaEl?jaEl.textContent:'';
+    const time=timeEl?timeEl.textContent:timeStr();
+    transcript.push({
+      time: time,
+      source: sType==='pc'?'相手':'自分',
+      en: s.text.trim(),
+      ja: (ja&&ja!=='翻訳中…'&&ja!=='聞き取り中…')?ja:'',
+      _el: s.el, // ref for final translation update
+      _idx: transcript.length
     });
+    const idx=transcript.length-1;
+
+    // Final translate
+    const detected=detectLang(s.text);
+    const from=detected, to=detected==='en'?'ja':'en';
+    llamaTranslate(s.text,from,to).then(t=>{
+      const jaEl2=s.el?.querySelector('.block-ja');
+      if(jaEl2){jaEl2.className='block-ja';jaEl2.textContent=t;}
+      if(transcript[idx]) transcript[idx].ja=t;
+      scrollDown();
+    }).catch(()=>{});
   }
+  s.el=null; s.text=''; s.started=0; s.silentCount=0;
+  clearTimeout(s.sealTimer);
 }
 
-// ══════ Groq live entry state (per source) ══════
-let groqLive = {
-  mic: { el: null, text: '', sealTimer: null },
-  pc:  { el: null, text: '', sealTimer: null }
-};
-const GROQ_SEAL_DELAY = 3500;
+// ══════ Save transcript ══════
+function saveTranscript(){
+  if(transcript.length===0){showErr('保存するデータがありません');return}
 
-function ensureGroqLive(src) {
-  const g = groqLive[src];
-  if (g.el) return;
-  const ph = document.getElementById('placeholder'); if (ph) ph.remove();
-  document.getElementById('clearBtn').classList.add('show');
-  g.el = document.createElement('div');
-  g.el.className = 'entry live';
-  const icon = src === 'pc' ? '🖥' : '🎙';
-  g.el.innerHTML = `
-    <div class="entry-left">
-      <div><span class="lang-badge lang-badge-src other">…</span><span class="src-icon">${icon}</span><span class="live-badge">LIVE</span></div>
-      <div class="src-text">…</div>
-    </div>
-    <div class="entry-right">
-      <div><span class="lang-badge lang-badge-tgt other">…</span></div>
-      <div class="tgt-text tgt-placeholder">…</div>
-    </div>`;
-  document.getElementById('results').appendChild(g.el);
-  scroll();
+  const date=new Date();
+  const dateStr=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  const timeS=String(date.getHours()).padStart(2,'0')+String(date.getMinutes()).padStart(2,'0');
+
+  let md=`# Meeting Transcript — ${dateStr}\n\n`;
+  md+=`| 時刻 | 話者 | 原文 | 翻訳 |\n`;
+  md+=`|------|------|------|------|\n`;
+  transcript.forEach(e=>{
+    const en=e.en.replace(/\|/g,'｜').replace(/\n/g,' ');
+    const ja=(e.ja||'').replace(/\|/g,'｜').replace(/\n/g,' ');
+    md+=`| ${e.time} | ${e.source} | ${en} | ${ja} |\n`;
+  });
+  md+=`\n---\n_Generated by Meeting Translator_\n`;
+
+  const blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`meeting_${dateStr}_${timeS}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-function sealGroqLive(src) {
-  const g = groqLive[src];
-  if (!g.el) return;
-  const srcEl = g.el.querySelector('.src-text');
-  if (!srcEl || srcEl.textContent === '…' || !g.text.trim()) { g.el.remove(); g.el = null; g.text = ''; return; }
-  g.el.classList.remove('live');
-  const lb = g.el.querySelector('.live-badge'); if (lb) lb.remove();
-  // Do final translation
-  const detected = currentMode === 'auto' ? detectLang(g.text) : null;
-  const pair = getPair(detected);
-  translateAPI(g.text, pair.s, pair.t).then(t => {
-    const tgtEl = g.el?.querySelector('.tgt-text');
-    if (tgtEl) { tgtEl.className = 'tgt-text'; tgtEl.textContent = t; }
-    scroll();
-  }).catch(() => {});
-  g.el = null; g.text = '';
-  scroll();
-}
+// ══════ Audio capture loop ══════
+function startCapture(stream, sType){
+  function doChunk(){
+    if(!isOn) return;
+    let mime='audio/webm';
+    if(!MediaRecorder.isTypeSupported(mime)) mime='audio/webm;codecs=opus';
+    if(!MediaRecorder.isTypeSupported(mime)) mime='';
 
-// ══════ Groq audio capture & processing ══════
-function startGroqCapture(stream, sourceType) {
-  const CHUNK = 3000; // 3 seconds for real-time feel
+    const rec=new MediaRecorder(stream, mime?{mimeType:mime}:{});
+    const parts=[];
+    rec.ondataavailable=e=>{if(e.data.size>0)parts.push(e.data)};
+    rec.onstop=async()=>{
+      if(!isOn){return}
+      if(parts.length===0){doChunk();return}
+      const blob=new Blob(parts,{type:mime||'audio/webm'});
 
-  function recordChunk() {
-    if (!isListening) return;
-    let mimeType = 'audio/webm';
-    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/webm;codecs=opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
+      // Skip very small blobs (likely silence)
+      if(blob.size<800){
+        handleSilence(sType);
+        doChunk();return;
+      }
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-    const chunks = [];
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-    recorder.onstop = async () => {
-      if (chunks.length === 0 || !isListening) { recordChunk(); return; }
-      const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
-      if (blob.size < 1000) { recordChunk(); return; }
+      try{
+        const result=await whisper(blob);
+        const text=(result.text||'').trim();
 
-      try {
-        const result = await whisperTranscribe(blob);
-        const text = (result.text || '').trim();
-
-        if (!text || text === '.' || text === '...' || text.length < 2) {
-          // Silence detected — start seal countdown
-          const g = groqLive[sourceType];
-          if (g.text.trim()) {
-            clearTimeout(g.sealTimer);
-            g.sealTimer = setTimeout(() => sealGroqLive(sourceType), GROQ_SEAL_DELAY);
-          }
-          recordChunk(); return;
+        // Filter Whisper hallucinations on silence
+        if(!text||text.length<2||/^[\.\s…]+$/.test(text)||text==='ご視聴ありがとうございました'||text==='Thanks for watching!'||text.toLowerCase()==='thank you.'){
+          handleSilence(sType);
+          doChunk();return;
         }
 
-        const g = groqLive[sourceType];
+        const s=src[sType];
+        s.silentCount=0; // reset silence counter
 
-        // Accumulate text into live entry
-        g.text += (g.text ? ' ' : '') + text;
-
-        const detected = result.language === 'ja' || result.language === 'japanese' ? 'ja' : 'en';
-        if (currentMode === 'auto') {
-          const dl = document.getElementById('detectLang');
-          dl.textContent = detected === 'ja' ? '検出: 🇯🇵 日本語 → 🇺🇸 English' : '検出: 🇺🇸 English → 🇯🇵 日本語';
+        // Check if block needs creation or auto-seal due to duration
+        if(!s.el) createBlock(sType);
+        if(Date.now()-s.started > MAX_BLOCK_SEC*1000){
+          sealBlock(sType);
+          createBlock(sType);
         }
-        const pair = getPair(detected);
 
-        // Create or update live entry
-        ensureGroqLive(sourceType);
-        const srcEl = g.el.querySelector('.src-text');
-        if (srcEl) srcEl.textContent = g.text;
+        // Accumulate text
+        s.text+=(s.text?' ':'')+text;
 
-        // Update badges
-        const sb = g.el.querySelector('.lang-badge-src');
-        const tb = g.el.querySelector('.lang-badge-tgt');
-        if (sb) { sb.className = 'lang-badge lang-badge-src ' + (pair.s==='ja'?'ja':pair.s==='en'?'en':'other'); sb.textContent = pair.s.toUpperCase(); }
-        if (tb) { tb.className = 'lang-badge lang-badge-tgt ' + (pair.t==='ja'?'ja':pair.t==='en'?'en':'other'); tb.textContent = pair.t.toUpperCase(); }
+        // Detect language and translate
+        const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
+        const from=detected, to=detected==='en'?'ja':'en';
 
-        // Translate accumulated text (real-time update)
-        translateAPI(g.text, pair.s, pair.t).then(t => {
-          if (!g.el) return;
-          const tgtEl = g.el.querySelector('.tgt-text');
-          if (tgtEl) { tgtEl.className = 'tgt-text'; tgtEl.textContent = t; }
-          scroll();
-        }).catch(() => {});
+        // Update English text immediately
+        const enEl=s.el.querySelector('.block-en');
+        if(enEl) enEl.textContent=s.text;
+
+        // Show "translating" state
+        const jaEl=s.el.querySelector('.block-ja');
+        if(jaEl&&jaEl.classList.contains('waiting')) jaEl.textContent='翻訳中…';
+
+        scrollDown();
+
+        // Translate with Llama (real-time update)
+        llamaTranslate(s.text,from,to).then(t=>{
+          if(!s.el) return;
+          const ja=s.el.querySelector('.block-ja');
+          if(ja){ja.className='block-ja';ja.textContent=t;}
+          scrollDown();
+        }).catch(()=>{});
 
         // Reset seal timer
-        clearTimeout(g.sealTimer);
-        g.sealTimer = setTimeout(() => sealGroqLive(sourceType), GROQ_SEAL_DELAY);
+        clearTimeout(s.sealTimer);
+        s.sealTimer=setTimeout(()=>sealBlock(sType), CHUNK_MS*2);
 
-        scroll();
-      } catch (err) {
-        console.error('Whisper error:', err);
-        if (err.message.includes('401')) showError('APIキーが無効です。設定を確認してください。');
-        else if (err.message.includes('429')) showError('レート制限に達しました。少し待ってから再試行してください。');
+      }catch(err){
+        console.error('Error:',err);
+        if(String(err).includes('401'))showErr('APIキーが無効です');
+        else if(String(err).includes('429'))showErr('レート制限。少し待ってください');
       }
-      recordChunk();
+      doChunk();
     };
-    recorder.start();
-    const timer = setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, CHUNK);
-    if (sourceType === 'mic') micTimer = timer; else pcTimer = timer;
+    rec.start();
+    const t=setTimeout(()=>{if(rec.state==='recording')rec.stop()},CHUNK_MS);
+    if(sType==='mic')micTimer=t;else pcTimer=t;
   }
-  recordChunk();
+  doChunk();
 }
 
-// ══════ Browser speech (fallback) ══════
-function startBrowserSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { showError('ブラウザが音声認識に対応していません'); return; }
-  liveFinal = ''; liveInterim = '';
-
-  recognition = new SR();
-  recognition.lang = currentMode === 'en-ja' ? 'en-US' : currentMode === 'ja-en' ? 'ja-JP' : 'ja-JP';
-  recognition.interimResults = true; recognition.continuous = true;
-
-  recognition.onresult = (event) => {
-    let af = '', ci = '';
-    for (let i = 0; i < event.results.length; i++) {
-      if (event.results[i].isFinal) af += event.results[i][0].transcript;
-      else ci += event.results[i][0].transcript;
-    }
-    liveFinal = af; liveInterim = ci;
-    ensureLiveEntry('mic');
-    updateLiveSrc((liveFinal + ' ' + liveInterim).trim());
-    const fullText = (liveFinal + ' ' + liveInterim).trim();
-    if (fullText) throttleTranslate(fullText);
-    clearTimeout(sealTimer);
-    sealTimer = setTimeout(() => { if (liveFinal.trim()) doSealBrowser(); }, SEAL_DELAY);
-  };
-  recognition.onerror = (event) => {
-    if (event.error === 'not-allowed') { showError('マイクへのアクセスが拒否されました。'); stopListening(); }
-  };
-  recognition.onend = () => {
-    if (!isListening) return;
-    if (liveFinal.trim()) doSealBrowser();
-    try {
-      const r = new SR();
-      r.lang = recognition.lang; r.interimResults = true; r.continuous = true;
-      r.onresult = recognition.onresult; r.onerror = recognition.onerror; r.onend = recognition.onend;
-      recognition = r; recognition.start();
-    } catch {}
-  };
-  recognition.start();
-}
-
-function doSealBrowser() {
-  const text = liveFinal.trim();
-  if (!text || !liveEl) return;
-  const detected = currentMode === 'auto' ? detectLang(text) : null;
-  if (currentMode === 'auto' && detected) {
-    document.getElementById('detectLang').textContent = detected === 'ja' ? '検出: 🇯🇵 日本語 → 🇺🇸 English' : '検出: 🇺🇸 English → 🇯🇵 日本語';
+function handleSilence(sType){
+  const s=src[sType];
+  s.silentCount++;
+  if(s.el && s.silentCount>=SEAL_SILENCE){
+    sealBlock(sType);
   }
-  const pair = getPair(detected);
-  updateLiveBadges(pair);
-  sealLiveEntry();
 }
 
-function throttleTranslate(text) {
-  const now = Date.now();
-  clearTimeout(translateTimer);
-  if (now - lastTranslateTime < TRANSLATE_THROTTLE) {
-    translateTimer = setTimeout(() => doLiveTranslate(text), TRANSLATE_THROTTLE);
-  } else { doLiveTranslate(text); }
-}
+// ══════ Start / Stop ══════
+function toggle(){isOn?stop():start()}
 
-function doLiveTranslate(text) {
-  lastTranslateTime = Date.now();
-  const detected = currentMode === 'auto' ? detectLang(text) : null;
-  const pair = getPair(detected);
-  updateLiveBadges(pair);
-  const ver = ++translateVersion;
-  translateAPI(text, pair.s, pair.t).then(t => {
-    if (ver !== translateVersion) return;
-    updateLiveTgt(t);
-  }).catch(() => {});
-}
+async function start(){
+  if(!apiKey){showErr('⚙設定からGroq APIキーを入力してください');return}
+  isOn=true;
+  document.getElementById('recBtn').classList.add('on');
+  document.getElementById('recIcon').textContent='⏹';
+  const st=document.getElementById('ctrlStatus');st.textContent='● 聞き取り中…';st.classList.add('on');
+  hideErr();
 
-// ══════ Main start/stop ══════
-function toggleListening() { isListening ? stopListening() : startListening(); }
-
-async function startListening() {
-  if (engine === 'groq' && !apiKey) {
-    showError('Groq APIキーを設定してください（⚙設定を開く）');
-    return;
+  if(useMic){
+    try{
+      micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      startCapture(micStream,'mic');
+    }catch(e){showErr('マイクにアクセスできません')}
   }
-
-  isListening = true;
-  document.getElementById('micBtn').classList.add('listening');
-  document.getElementById('micIcon').textContent = '⏹';
-  const st = document.getElementById('status');
-  st.textContent = currentMode === 'auto' ? '● 聞き取り中… 日本語・英語どちらでもOK' : '● 聞き取り中…';
-  st.classList.add('active');
-  animWave(true); hideError();
-
-  if (engine === 'groq') {
-    // Mic
-    if (useMic) {
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        startGroqCapture(micStream, 'mic');
-      } catch (e) { showError('マイクにアクセスできません: ' + e.message); }
-    }
-    // PC audio
-    if (usePC) {
-      try {
-        pcStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        // Hide video track (we only need audio)
-        pcStream.getVideoTracks().forEach(t => t.stop());
-        if (pcStream.getAudioTracks().length === 0) {
-          showError('PC音声が取得できませんでした。画面共有時に「音声を共有」にチェックを入れてください。');
-        } else {
-          startGroqCapture(pcStream, 'pc');
-        }
-      } catch (e) {
-        if (e.name !== 'NotAllowedError') showError('PC音声取得エラー: ' + e.message);
-        usePC = false; document.getElementById('srcPC').classList.remove('active');
+  if(usePC){
+    try{
+      pcStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+      pcStream.getVideoTracks().forEach(t=>t.stop());
+      if(pcStream.getAudioTracks().length===0){
+        showErr('「音声を共有」にチェックを入れてください');
+      }else{
+        startCapture(pcStream,'pc');
       }
+    }catch(e){
+      if(e.name!=='NotAllowedError')showErr('PC音声取得エラー');
+      usePC=false;document.getElementById('btnPC').classList.remove('active');
     }
-  } else {
-    startBrowserSpeech();
   }
 }
 
-function stopListening() {
-  isListening = false;
-  clearTimeout(sealTimer); clearTimeout(translateTimer);
-  clearTimeout(micTimer); clearTimeout(pcTimer);
-
-  // Seal Groq live entries
-  if (groqLive.mic.sealTimer) clearTimeout(groqLive.mic.sealTimer);
-  if (groqLive.pc.sealTimer) clearTimeout(groqLive.pc.sealTimer);
-  sealGroqLive('mic'); sealGroqLive('pc');
-
-  // Stop Groq streams
-  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-  if (pcStream) { pcStream.getTracks().forEach(t => t.stop()); pcStream = null; }
-
-  // Stop browser speech
-  if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
-  if (liveFinal?.trim()) doSealBrowser();
-  sealLiveEntry();
-
-  document.getElementById('micBtn').classList.remove('listening');
-  document.getElementById('micIcon').textContent = '🎤';
-  const st = document.getElementById('status'); st.textContent = '🎤 タップして開始'; st.classList.remove('active');
-  animWave(false);
-  if (currentMode === 'auto') document.getElementById('detectLang').textContent = '自動言語検出: 待機中';
+function stop(){
+  isOn=false;
+  clearTimeout(micTimer);clearTimeout(pcTimer);
+  sealBlock('mic');sealBlock('pc');
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
+  if(pcStream){pcStream.getTracks().forEach(t=>t.stop());pcStream=null}
+  document.getElementById('recBtn').classList.remove('on');
+  document.getElementById('recIcon').textContent='🎤';
+  const st=document.getElementById('ctrlStatus');st.textContent='タップして開始';st.classList.remove('on');
 }
 
-function clearAll() {
-  liveEl = null; liveFinal = ''; liveInterim = '';
-  groqLive.mic = { el: null, text: '', sealTimer: null };
-  groqLive.pc = { el: null, text: '', sealTimer: null };
-  document.getElementById('results').innerHTML = '<div class="placeholder" id="placeholder">🎙 マイクボタンを押して話してください<br><span class="sub">話しながらリアルタイムで翻訳されます</span></div>';
-  document.getElementById('clearBtn').classList.remove('show');
+function clearAll(){
+  if(transcript.length>0&&!confirm('トランスクリプトをクリアします。保存しましたか？'))return;
+  sealBlock('mic');sealBlock('pc');
+  transcript=[];
+  document.getElementById('feed').innerHTML='<div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>';
 }
 
-function showError(m) { const e = document.getElementById('errorBox'); e.textContent = m; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 8000); }
-function hideError() { document.getElementById('errorBox').classList.remove('show'); }
-function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function showErr(m){const e=document.getElementById('errBox');e.textContent=m;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),6000)}
+function hideErr(){document.getElementById('errBox').classList.remove('show')}
 </script>
 </body>
 </html>
