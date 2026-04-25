@@ -90,7 +90,7 @@
 <div id="app">
   <!-- Top bar -->
   <div class="top-bar">
-    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26d</span></h1>
+    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26e</span></h1>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -186,8 +186,8 @@ let micTimer = null, pcTimer = null;
 
 // Per-source block state
 const src = {
-  mic: { el: null, text: '', jaText: '', lastText: '', started: 0, silentCount: 0, sealTimer: null },
-  pc:  { el: null, text: '', jaText: '', lastText: '', started: 0, silentCount: 0, sealTimer: null }
+  mic: { el: null, text: '', jaText: '', lastText: '', pendingText: '', started: 0, silentCount: 0, sealTimer: null },
+  pc:  { el: null, text: '', jaText: '', lastText: '', pendingText: '', started: 0, silentCount: 0, sealTimer: null }
 };
 
 const CHUNK_SEC = 5;
@@ -371,6 +371,25 @@ function detectLang(t){
   return (jp+en===0)?'ja':(jp/(jp+en)>0.3?'ja':'en');
 }
 
+// ══════ Sentence splitter ══════
+function splitComplete(text){
+  // Find last sentence-ending punctuation (. ? !) followed by space
+  const lastDot=text.lastIndexOf('. ');
+  const lastQ=text.lastIndexOf('? ');
+  const lastEx=text.lastIndexOf('! ');
+  const lastEnd=Math.max(lastDot,lastQ,lastEx);
+
+  if(lastEnd===-1){
+    // No mid-text sentence break. Check if text ends with punctuation
+    if(/[.?!]$/.test(text.trim())) return {complete:text.trim(),pending:''};
+    return {complete:'',pending:text.trim()};
+  }
+  return {
+    complete:text.slice(0,lastEnd+1).trim(),
+    pending:text.slice(lastEnd+2).trim()
+  };
+}
+
 // ══════ Block management ══════
 function createBlock(sType){
   const s=src[sType];
@@ -411,8 +430,18 @@ function sealBlock(sType){
   s.el.classList.remove('live');
   const lb=s.el.querySelector('.block-live');if(lb)lb.remove();
 
-  // Save to transcript
+  // Flush any remaining pending text
+  if(s.pendingText.trim()){
+    s.text+=(s.text?' ':'')+s.pendingText.trim();
+    s.pendingText='';
+  }
+
+  // Save to transcript & do final translation
   if(s.text.trim()){
+    // Update original text display
+    const enEl=s.el.querySelector('.block-en');
+    if(enEl&&transMode!=='ja-only') enEl.textContent=s.text;
+
     const jaEl=s.el.querySelector('.block-ja');
     const timeEl=s.el.querySelector('.block-time');
     const ja=jaEl?jaEl.textContent:'';
@@ -428,11 +457,10 @@ function sealBlock(sType){
     const idx=transcript.length-1;
 
     if(transMode==='ja-only'){
-      // No translation needed - text is already Japanese
       const jaEl2=s.el.querySelector('.block-ja');
       if(jaEl2){jaEl2.className='block-ja';jaEl2.textContent=s.text;}
     } else {
-      // Final full translation for quality
+      // Final full translation of complete text for quality
       const detected=detectLang(s.text);
       const pair=getPair(detected);
       llamaTranslate(s.text,pair.from,pair.to).then(t=>{
@@ -443,7 +471,7 @@ function sealBlock(sType){
       }).catch(()=>{});
     }
   }
-  s.el=null; s.text=''; s.jaText=''; s.started=0; s.silentCount=0;
+  s.el=null; s.text=''; s.jaText=''; s.pendingText=''; s.started=0; s.silentCount=0;
   clearTimeout(s.sealTimer);
 }
 
@@ -604,7 +632,7 @@ function startCapture(stream, sType){
         src[sType].lastText=text;
 
         const s=src[sType];
-        s.silentCount=0; // reset silence counter
+        s.silentCount=0;
 
         // Check if block needs creation or auto-seal due to duration
         if(!s.el) createBlock(sType);
@@ -613,37 +641,46 @@ function startCapture(stream, sType){
           createBlock(sType);
         }
 
-        // Accumulate text
-        s.text+=(s.text?' ':'')+text;
-
         // Detect language
         const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
         const pair=getPair(detected);
 
         if(transMode==='ja-only'){
-          // Transcript-only mode: show text directly, no translation
-          const jaEl=s.el.querySelector('.block-ja');
-          if(jaEl){jaEl.className='block-ja';jaEl.textContent=s.text;}
-          const enEl=s.el.querySelector('.block-en');
-          if(enEl) enEl.style.display='none';
+          // Transcript-only mode: combine pending + new text, split sentences
+          const combined=((s.pendingText||'')+' '+text).trim();
+          const {complete,pending}=splitComplete(combined);
+          s.pendingText=pending;
+
+          if(complete){
+            s.text+=(s.text?' ':'')+complete;
+            const jaEl=s.el.querySelector('.block-ja');
+            if(jaEl){jaEl.className='block-ja';jaEl.textContent=s.text;}
+            const enEl=s.el.querySelector('.block-en');
+            if(enEl) enEl.style.display='none';
+          }
           scrollDown();
         } else {
-          // Update original text immediately
-          const enEl=s.el.querySelector('.block-en');
-          if(enEl){enEl.style.display='';enEl.textContent=s.text;}
+          // Translation mode: combine pending + new text, split into complete sentences
+          const combined=((s.pendingText||'')+' '+text).trim();
+          const {complete,pending}=splitComplete(combined);
+          s.pendingText=pending;
 
-          scrollDown();
-
-          // Translate ONLY the new chunk and APPEND (don't re-translate everything)
-          const chunkToTranslate=text;
-          llamaTranslate(chunkToTranslate,pair.from,pair.to).then(t=>{
-            if(!s.el) return;
-            // Append to existing translation
-            s.jaText=(s.jaText||'')+t;
-            const ja=s.el.querySelector('.block-ja');
-            if(ja){ja.className='block-ja';ja.textContent=s.jaText;}
+          if(complete){
+            // Accumulate complete sentences into original text
+            s.text+=(s.text?' ':'')+complete;
+            const enEl=s.el.querySelector('.block-en');
+            if(enEl){enEl.style.display='';enEl.textContent=s.text;}
             scrollDown();
-          }).catch(()=>{});
+
+            // Translate complete sentences only
+            llamaTranslate(complete,pair.from,pair.to).then(t=>{
+              if(!s.el) return;
+              s.jaText=(s.jaText||'')+t+' ';
+              const ja=s.el.querySelector('.block-ja');
+              if(ja){ja.className='block-ja';ja.textContent=s.jaText;}
+              scrollDown();
+            }).catch(()=>{});
+          }
         }
 
         // Reset seal timer
