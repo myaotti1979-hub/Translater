@@ -316,7 +316,7 @@ async function llamaTranslate(text, fromLang, toLang){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      contents:[{parts:[{text:`You are a professional real-time meeting translator. Translate ${fromName} to natural ${toName}. Output ONLY the translation. No quotes, no explanation. Keep it natural and concise for a business meeting context.\n\n${text}`}]}],
+      contents:[{parts:[{text:`You are a real-time meeting translator. Translate the following ${fromName} to ${toName}. Rules: Translate ALL content faithfully. Do NOT summarize or omit anything. Output ONLY the translation.\n\n${text}`}]}],
       generationConfig:{maxOutputTokens:500,temperature:0.2}
     })
   });
