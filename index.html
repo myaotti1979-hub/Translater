@@ -441,24 +441,29 @@ function handleChunk(sType, text, pair){
     if(jaEl) jaEl.textContent=s.accText;
   } else {
     if(enEl){enEl.style.display='';enEl.textContent=s.accText;}
+  }
+  scrollDown();
 
-    // 翻訳リクエスト（バージョン管理で古い結果を捨てる）
+  // 確定判定（全モード共通）
+  const hasEnd=/[.?!。？！]$/.test(s.accText.trim());
+  const shouldSeal=(s.accText.length>=MIN_SEAL && hasEnd) || s.accText.length>=MAX_SEAL;
+
+  if(shouldSeal){
+    sealLive(sType);
+    return;
+  }
+
+  // 未確定 → リアルタイム翻訳更新（翻訳モードのみ）
+  if(transMode!=='ja-only'){
     s.transVer=(s.transVer||0)+1;
     const ver=s.transVer;
     const ctx=s.context.slice(-3);
     llamaTranslate(s.accText,pair.from,pair.to,ctx).then(t=>{
-      if(ver!==s.transVer||!s.el) return; // 古い結果はスキップ
+      if(ver!==s.transVer||!s.el) return;
       const jaEl=s.el.querySelector('.block-ja');
       if(jaEl) jaEl.textContent=t;
       scrollDown();
     }).catch(()=>{});
-  }
-  scrollDown();
-
-  // 確定判定: 十分な長さ＋句読点 or 最大長超え
-  const hasEnd=/[.?!。？！]$/.test(s.accText.trim());
-  if((s.accText.length>=MIN_SEAL && hasEnd) || s.accText.length>=MAX_SEAL){
-    sealLive(sType);
   }
 
   // 沈黙タイマーリセット
@@ -485,15 +490,21 @@ function sealLive(sType){
   transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:text,ja:ja});
 
   // 最終翻訳（通し訳で品質向上）
-  const sealedEl=s.el; // DOM参照を保持（s.elはすぐnullになるため）
+  const sealedEl=s.el;
   if(transMode!=='ja-only'){
     const ctx=s.context.slice(-3);
-    llamaTranslate(text,pair.from,pair.to,ctx).then(t=>{
-      const jaEl2=sealedEl.querySelector('.block-ja');
-      if(jaEl2) jaEl2.textContent=t;
-      if(transcript[idx]) transcript[idx].ja=t;
-      scrollDown();
-    }).catch(()=>{});
+    const doTranslate=(attempt)=>{
+      llamaTranslate(text,pair.from,pair.to,ctx).then(t=>{
+        const jaEl2=sealedEl.querySelector('.block-ja');
+        if(jaEl2) jaEl2.textContent=t;
+        if(transcript[idx]) transcript[idx].ja=t;
+        scrollDown();
+      }).catch(err=>{
+        console.error('Translation failed (attempt '+attempt+'):',err);
+        if(attempt<3) setTimeout(()=>doTranslate(attempt+1),2000); // リトライ
+      });
+    };
+    doTranslate(1);
   }
 
   // context更新
