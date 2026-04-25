@@ -101,6 +101,14 @@
     </div>
     <div style="font-size:10px;color:#64748b;margin-top:4px" id="engineDesc">音声認識=Groq Whisper（無料）/ 翻訳・要約=Gemini Flash</div>
 
+    <label>Gemini モデル</label>
+    <div class="src-row">
+      <button class="src-btn active" id="btnM1" onclick="setModel('gemini-3-flash-preview')">3 Flash<br><span style="font-size:9px;color:#86efac">⭐最高品質</span></button>
+      <button class="src-btn" id="btnM2" onclick="setModel('gemini-2.5-flash')">2.5 Flash<br><span style="font-size:9px;color:#94a3b8">安定</span></button>
+      <button class="src-btn" id="btnM3" onclick="setModel('gemini-2.5-flash-lite')">2.5 Lite<br><span style="font-size:9px;color:#fbbf24">最安</span></button>
+    </div>
+    <div style="font-size:10px;color:#64748b;margin-top:4px" id="modelDesc">Gemini 3 Flash Preview — 最高品質・$0.50/$3.00 (音声$1.00) per 1M tokens</div>
+
     <label>Groq API キー（<a href="https://console.groq.com" target="_blank" style="color:#818cf8">無料取得</a>）</label>
     <input type="password" id="keyInput" placeholder="gsk_..." oninput="saveKey()">
     <div class="key-status" id="keyStatus"></div>
@@ -152,6 +160,7 @@
 // ══════ State ══════
 let apiKey = '', geminiKey = '', nameHints = '', useMic = true, usePC = false;
 let sttEngine = 'groq'; // 'groq' or 'gemini'
+let geminiModel = 'gemini-3-flash-preview';
 let isOn = false;
 let micStream = null, pcStream = null;
 let micTimer = null, pcTimer = null;
@@ -178,10 +187,11 @@ function sS(k,v){try{localStorage.setItem(k,v)}catch{}}
 (function(){
   apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
   sttEngine = sG('stteng')||'groq';
+  geminiModel = sG('gmodel')||'gemini-3-flash-preview';
   document.getElementById('keyInput').value = apiKey;
   document.getElementById('gemKeyInput').value = geminiKey;
   document.getElementById('namesInput').value = nameHints;
-  updateKeyUI(); updateGemKeyUI(); updateEngineUI();
+  updateKeyUI(); updateGemKeyUI(); updateEngineUI(); updateModelUI();
 })();
 
 function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
@@ -213,6 +223,22 @@ function updateEngineUI(){
   document.getElementById('engineDesc').textContent=
     sttEngine==='groq'?'音声認識=Groq Whisper（無料）/ 翻訳・要約=Gemini Flash'
                       :'音声認識・翻訳・要約 すべてGemini Flash（Groq枠を消費しません）';
+}
+const MODEL_INFO={
+  'gemini-3-flash-preview':{btn:'btnM1',desc:'Gemini 3 Flash Preview — 最高品質・$0.50/$3.00 (音声$1.00) per 1M tokens'},
+  'gemini-2.5-flash':{btn:'btnM2',desc:'Gemini 2.5 Flash — 安定・$0.30/$2.50 (音声$1.00) per 1M tokens'},
+  'gemini-2.5-flash-lite':{btn:'btnM3',desc:'Gemini 2.5 Flash-Lite — 最安・$0.10/$0.40 (音声$0.30) per 1M tokens'}
+};
+function setModel(m){
+  geminiModel=m;sS('gmodel',m);updateModelUI();
+}
+function updateModelUI(){
+  ['btnM1','btnM2','btnM3'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  const info=MODEL_INFO[geminiModel];
+  if(info){
+    document.getElementById(info.btn).classList.add('active');
+    document.getElementById('modelDesc').textContent=info.desc;
+  }
 }
 
 // ══════ Scroll — always keep bottom visible ══════
@@ -247,7 +273,7 @@ async function geminiTranscribe(blob){
     r.readAsDataURL(blob);
   });
   const namePrompt=nameHints.trim()?`\nParticipant names for reference: ${nameHints.trim()}`:'';
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -271,7 +297,7 @@ async function llamaTranslate(text, fromLang, toLang){
   if(!geminiKey) throw new Error('No Gemini key');
   const fromName = fromLang==='en'?'English':'Japanese';
   const toName = toLang==='en'?'English':'Japanese';
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -422,7 +448,7 @@ async function summarize(){
   });
 
   try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
