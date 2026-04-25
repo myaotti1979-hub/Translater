@@ -66,6 +66,17 @@
 
   /* Scroll anchor */
   .scroll-anchor{height:1px;flex-shrink:0}
+
+  /* Summary overlay */
+  .summary-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;justify-content:center;align-items:center;padding:16px}
+  .summary-overlay.show{display:flex}
+  .summary-box{background:#1e293b;border-radius:16px;padding:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;border:1px solid rgba(99,102,241,0.3)}
+  .summary-box h2{font-size:16px;color:#a5b4fc;margin-bottom:12px}
+  .summary-box pre{white-space:pre-wrap;font-size:14px;line-height:1.8;color:#e2e8f0;font-family:'Noto Sans JP',sans-serif}
+  .summary-box .btn-row{display:flex;gap:8px;margin-top:16px}
+  .summary-box button{flex:1;padding:10px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .summary-close{background:rgba(99,102,241,0.2);color:#a5b4fc}
+  .summary-word{background:rgba(34,197,94,0.2);color:#86efac}
 </style>
 </head>
 <body>
@@ -74,7 +85,8 @@
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
     <div style="display:flex;gap:6px">
-      <button onclick="saveTranscript()" title="議事録を保存">💾</button>
+      <button onclick="exportWord()" title="Word保存">📝</button>
+      <button onclick="summarize()" title="AI要約">📋</button>
       <button onclick="clearAll()" title="クリア">🗑</button>
       <button onclick="toggleSettings()" title="設定">⚙</button>
     </div>
@@ -85,6 +97,10 @@
     <label>Groq API キー（<a href="https://console.groq.com" target="_blank" style="color:#818cf8">無料取得</a>）</label>
     <input type="password" id="keyInput" placeholder="gsk_..." oninput="saveKey()">
     <div class="key-status" id="keyStatus"></div>
+
+    <label>Gemini API キー — 要約用（<a href="https://aistudio.google.com/apikey" target="_blank" style="color:#818cf8">無料取得</a>）</label>
+    <input type="password" id="gemKeyInput" placeholder="AIza..." oninput="saveGemKey()">
+    <div class="key-status" id="gemKeyStatus"></div>
 
     <label>参加者の名前（人名認識ヒント）</label>
     <textarea id="namesInput" placeholder="田中, Smith, 佐藤..." oninput="saveNames()"></textarea>
@@ -111,11 +127,23 @@
     <div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>
   </div>
   <div class="scroll-anchor" id="scrollAnchor"></div>
+
+  <!-- Summary Modal -->
+  <div class="summary-overlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
+    <div class="summary-box">
+      <h2>📋 AI要約（議事録）</h2>
+      <pre id="summaryText">要約を生成中...</pre>
+      <div class="btn-row">
+        <button class="summary-word" onclick="exportWord(true)">📝 要約付きWord保存</button>
+        <button class="summary-close" onclick="closeSummary()">閉じる</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 // ══════ State ══════
-let apiKey = '', nameHints = '', useMic = true, usePC = false;
+let apiKey = '', geminiKey = '', nameHints = '', useMic = true, usePC = false;
 let isOn = false;
 let micStream = null, pcStream = null;
 let micTimer = null, pcTimer = null;
@@ -140,10 +168,11 @@ function sS(k,v){try{localStorage.setItem(k,v)}catch{}}
 
 // ══════ Init ══════
 (function(){
-  apiKey = sG('gk')||''; nameHints = sG('nh')||'';
+  apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
   document.getElementById('keyInput').value = apiKey;
+  document.getElementById('gemKeyInput').value = geminiKey;
   document.getElementById('namesInput').value = nameHints;
-  updateKeyUI();
+  updateKeyUI(); updateGemKeyUI();
 })();
 
 function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
@@ -158,6 +187,12 @@ function updateKeyUI(){
 function toggleSrc(s){
   if(s==='mic'){useMic=!useMic;document.getElementById('btnMic').classList.toggle('active',useMic)}
   if(s==='pc'){usePC=!usePC;document.getElementById('btnPC').classList.toggle('active',usePC)}
+}
+function saveGemKey(){geminiKey=document.getElementById('gemKeyInput').value.trim();sS('gemk',geminiKey);updateGemKeyUI()}
+function updateGemKeyUI(){
+  const el=document.getElementById('gemKeyStatus');
+  if(!geminiKey)el.innerHTML='<span class="key-ng">⚠ 要約機能を使うにはキーが必要です</span>';
+  else el.innerHTML='<span class="key-ok">✓ 設定済み</span>';
 }
 
 // ══════ Scroll — always keep bottom visible ══════
@@ -281,32 +316,94 @@ function sealBlock(sType){
   clearTimeout(s.sealTimer);
 }
 
-// ══════ Save transcript ══════
-function saveTranscript(){
+// ══════ Word Export ══════
+let lastSummary = '';
+
+function exportWord(includeSummary){
   if(transcript.length===0){showErr('保存するデータがありません');return}
 
   const date=new Date();
-  const dateStr=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  const dateStr=date.getFullYear()+'年'+(date.getMonth()+1)+'月'+date.getDate()+'日';
+  const fileDate=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
   const timeS=String(date.getHours()).padStart(2,'0')+String(date.getMinutes()).padStart(2,'0');
 
-  let md=`# Meeting Transcript — ${dateStr}\n\n`;
-  md+=`| 時刻 | 話者 | 原文 | 翻訳 |\n`;
-  md+=`|------|------|------|------|\n`;
-  transcript.forEach(e=>{
-    const en=e.en.replace(/\|/g,'｜').replace(/\n/g,' ');
-    const ja=(e.ja||'').replace(/\|/g,'｜').replace(/\n/g,' ');
-    md+=`| ${e.time} | ${e.source} | ${en} | ${ja} |\n`;
-  });
-  md+=`\n---\n_Generated by Meeting Translator_\n`;
+  let body=`<h1 style="color:#333;border-bottom:2px solid #4f46e5;padding-bottom:8px;">Meeting Transcript</h1>`;
+  body+=`<p style="color:#666;font-size:14px;">${dateStr}</p>`;
 
-  const blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  // Summary section
+  const summary = includeSummary ? lastSummary : '';
+  if(summary){
+    body+=`<h2 style="color:#4f46e5;margin-top:24px;">📋 要約</h2>`;
+    body+=`<div style="background:#f0f0ff;padding:16px;border-radius:8px;border-left:4px solid #4f46e5;margin-bottom:24px;line-height:1.8;">${escapeHtml(summary).replace(/\n/g,'<br>')}</div>`;
+  }
+
+  body+=`<h2 style="color:#4f46e5;margin-top:24px;">📝 トランスクリプト</h2>`;
+
+  transcript.forEach(e=>{
+    const srcLabel=e.source==='相手'?'🖥 相手':'🎙 自分';
+    body+=`<div style="margin-bottom:16px;padding:12px 16px;background:#fafafa;border-radius:8px;border-left:4px solid ${e.source==='相手'?'#818cf8':'#f472b6'};">`;
+    body+=`<p style="margin:0 0 4px;font-size:11px;color:#888;"><b>${e.time}</b> — ${srcLabel}</p>`;
+    body+=`<p style="margin:0 0 6px;font-size:15px;color:#111;line-height:1.7;"><b>${escapeHtml(e.ja||'')}</b></p>`;
+    body+=`<p style="margin:0;font-size:12px;color:#555;line-height:1.5;">${escapeHtml(e.en)}</p>`;
+    body+=`</div>`;
+  });
+
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><style>body{font-family:'Yu Gothic','Noto Sans JP','Hiragino Sans',sans-serif;max-width:700px;margin:0 auto;padding:24px;}</style></head>
+<body>${body}<p style="color:#aaa;font-size:10px;margin-top:32px;text-align:center;">Generated by Meeting Translator</p></body></html>`;
+
+  const blob=new Blob(['\ufeff',html],{type:'application/msword'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`meeting_${dateStr}_${timeS}.md`;
+  a.download=`meeting_${fileDate}_${timeS}.doc`;
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ══════ Gemini Summary ══════
+async function summarize(){
+  if(transcript.length===0){showErr('要約するデータがありません');return}
+  if(!geminiKey){showErr('⚙設定からGemini APIキーを入力してください');return}
+
+  // Show modal
+  document.getElementById('summaryOverlay').classList.add('show');
+  document.getElementById('summaryText').textContent='要約を生成中…';
+
+  // Build transcript text
+  let text='';
+  transcript.forEach(e=>{
+    text+=`[${e.time} ${e.source}] ${e.en}\n→ ${e.ja||''}\n\n`;
+  });
+
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        contents:[{parts:[{text:`以下は会議のトランスクリプトです。日本語で議事録として要約してください。
+
+要約には以下を含めてください：
+1. 会議の主要な議題
+2. 重要な決定事項
+3. アクションアイテム（誰が何をするか）
+4. 次のステップ
+
+トランスクリプト：
+${text}`}]}]
+      })
+    });
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    const summary=d.candidates?.[0]?.content?.parts?.[0]?.text||'要約を生成できませんでした';
+    lastSummary=summary;
+    document.getElementById('summaryText').textContent=summary;
+  }catch(err){
+    document.getElementById('summaryText').textContent='⚠ 要約の生成に失敗しました: '+err.message;
+  }
+}
+
+function closeSummary(){document.getElementById('summaryOverlay').classList.remove('show')}
 
 // ══════ Audio capture loop ══════
 function startCapture(stream, sType){
@@ -454,6 +551,7 @@ function clearAll(){
 
 function showErr(m){const e=document.getElementById('errBox');e.textContent=m;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),6000)}
 function hideErr(){document.getElementById('errBox').classList.remove('show')}
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 </script>
 </body>
 </html>
