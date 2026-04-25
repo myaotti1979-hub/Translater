@@ -90,7 +90,7 @@
 <div id="app">
   <!-- Top bar -->
   <div class="top-bar">
-    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26a</span></h1>
+    <h1>🌐 Meeting Translator <span style="font-size:9px;color:#475569;font-weight:400">v2026-04-26b</span></h1>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -185,8 +185,8 @@ let micTimer = null, pcTimer = null;
 
 // Per-source block state
 const src = {
-  mic: { el: null, text: '', started: 0, silentCount: 0, sealTimer: null },
-  pc:  { el: null, text: '', started: 0, silentCount: 0, sealTimer: null }
+  mic: { el: null, text: '', jaText: '', started: 0, silentCount: 0, sealTimer: null },
+  pc:  { el: null, text: '', jaText: '', started: 0, silentCount: 0, sealTimer: null }
 };
 
 const CHUNK_SEC = 5;
@@ -372,7 +372,7 @@ function createBlock(sType){
 
   const ph=document.getElementById('feedEmpty');if(ph)ph.remove();
 
-  s.text=''; s.started=Date.now(); s.silentCount=0;
+  s.text=''; s.jaText=''; s.started=Date.now(); s.silentCount=0;
   s.el=document.createElement('div');
   s.el.className='block live';
   const icon=sType==='pc'?'🖥':'🎙';
@@ -430,7 +430,7 @@ function sealBlock(sType){
       scrollDown();
     }).catch(()=>{});
   }
-  s.el=null; s.text=''; s.started=0; s.silentCount=0;
+  s.el=null; s.text=''; s.jaText=''; s.started=0; s.silentCount=0;
   clearTimeout(s.sealTimer);
 }
 
@@ -599,25 +599,24 @@ function startCapture(stream, sType){
         // Accumulate text
         s.text+=(s.text?' ':'')+text;
 
-        // Detect language and translate
+        // Detect language
         const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
         const pair=getPair(detected);
 
-        // Update English text immediately
+        // Update original text immediately
         const enEl=s.el.querySelector('.block-en');
         if(enEl) enEl.textContent=s.text;
 
-        // Show "translating" state
-        const jaEl=s.el.querySelector('.block-ja');
-        if(jaEl&&jaEl.classList.contains('waiting')) jaEl.textContent='翻訳中…';
-
         scrollDown();
 
-        // Translate with Gemini (real-time update)
-        llamaTranslate(s.text,pair.from,pair.to).then(t=>{
+        // Translate ONLY the new chunk and APPEND (don't re-translate everything)
+        const chunkToTranslate=text;
+        llamaTranslate(chunkToTranslate,pair.from,pair.to).then(t=>{
           if(!s.el) return;
+          // Append to existing translation
+          s.jaText=(s.jaText||'')+t;
           const ja=s.el.querySelector('.block-ja');
-          if(ja){ja.className='block-ja';ja.textContent=t;}
+          if(ja){ja.className='block-ja';ja.textContent=s.jaText;}
           scrollDown();
         }).catch(()=>{});
 
