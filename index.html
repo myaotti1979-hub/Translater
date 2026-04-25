@@ -144,6 +144,13 @@
   </div>
   <div class="error-box" id="errBox"></div>
 
+  <!-- Translation Mode -->
+  <div style="display:flex;gap:6px;padding:4px 16px 6px;justify-content:center">
+    <button class="src-btn active" id="btnModeAuto" onclick="setTransMode('auto')" style="padding:5px 12px;font-size:11px">🔄 自動検出</button>
+    <button class="src-btn" id="btnModeEnJa" onclick="setTransMode('en-ja')" style="padding:5px 12px;font-size:11px">🇺🇸→🇯🇵</button>
+    <button class="src-btn" id="btnModeJaEn" onclick="setTransMode('ja-en')" style="padding:5px 12px;font-size:11px">🇯🇵→🇺🇸</button>
+  </div>
+
   <!-- Feed -->
   <div class="feed" id="feed">
     <div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>
@@ -171,6 +178,7 @@
 let apiKey = '', geminiKey = '', nameHints = '', useMic = true, usePC = false;
 let sttEngine = 'groq'; // 'groq' or 'gemini'
 let geminiModel = 'gemini-3-flash-preview';
+let transMode = 'auto'; // 'auto', 'en-ja', 'ja-en'
 let isOn = false;
 let micStream = null, pcStream = null;
 let micTimer = null, pcTimer = null;
@@ -181,7 +189,7 @@ const src = {
   pc:  { el: null, text: '', started: 0, silentCount: 0, sealTimer: null }
 };
 
-const CHUNK_SEC = 3;
+const CHUNK_SEC = 5;
 const CHUNK_MS = CHUNK_SEC * 1000;
 const MAX_BLOCK_SEC = 25;   // auto-seal after 25 seconds
 const SEAL_SILENCE = 1;     // seal after 1 silent chunk (3 seconds)
@@ -234,6 +242,18 @@ function updateEngineUI(){
 function setModel(m){
   geminiModel=m;sS('gmodel',m);updateModelUI();
 }
+function setTransMode(m){
+  transMode=m;sS('tmode',m);
+  document.getElementById('btnModeAuto').classList.toggle('active',m==='auto');
+  document.getElementById('btnModeEnJa').classList.toggle('active',m==='en-ja');
+  document.getElementById('btnModeJaEn').classList.toggle('active',m==='ja-en');
+}
+function getPair(detected){
+  if(transMode==='en-ja') return {from:'en',to:'ja'};
+  if(transMode==='ja-en') return {from:'ja',to:'en'};
+  // auto
+  return detected==='ja'?{from:'ja',to:'en'}:{from:'en',to:'ja'};
+}
 function updateModelUI(){
   ['btnM1','btnM2','btnM3'].forEach(id=>document.getElementById(id).classList.remove('active'));
   const info=MODEL_INFO[geminiModel];
@@ -250,10 +270,12 @@ function updateModelUI(){
   geminiModel = sG('gmodel')||'gemini-3-flash-preview';
   if(!MODEL_INFO[geminiModel]) geminiModel='gemini-3-flash-preview';
   sS('gmodel',geminiModel);
+  transMode = sG('tmode')||'auto';
   document.getElementById('keyInput').value = apiKey;
   document.getElementById('gemKeyInput').value = geminiKey;
   document.getElementById('namesInput').value = nameHints;
   updateKeyUI(); updateGemKeyUI(); updateEngineUI(); updateModelUI();
+  setTransMode(transMode);
 })();
 
 // ══════ Scroll — always keep bottom visible ══════
@@ -390,8 +412,8 @@ function sealBlock(sType){
 
     // Final translate
     const detected=detectLang(s.text);
-    const from=detected, to=detected==='en'?'ja':'en';
-    llamaTranslate(s.text,from,to).then(t=>{
+    const pair=getPair(detected);
+    llamaTranslate(s.text,pair.from,pair.to).then(t=>{
       const jaEl2=s.el?.querySelector('.block-ja');
       if(jaEl2){jaEl2.className='block-ja';jaEl2.textContent=t;}
       if(transcript[idx]) transcript[idx].ja=t;
@@ -569,7 +591,7 @@ function startCapture(stream, sType){
 
         // Detect language and translate
         const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
-        const from=detected, to=detected==='en'?'ja':'en';
+        const pair=getPair(detected);
 
         // Update English text immediately
         const enEl=s.el.querySelector('.block-en');
@@ -581,8 +603,8 @@ function startCapture(stream, sType){
 
         scrollDown();
 
-        // Translate with Llama (real-time update)
-        llamaTranslate(s.text,from,to).then(t=>{
+        // Translate with Gemini (real-time update)
+        llamaTranslate(s.text,pair.from,pair.to).then(t=>{
           if(!s.el) return;
           const ja=s.el.querySelector('.block-ja');
           if(ja){ja.className='block-ja';ja.textContent=t;}
