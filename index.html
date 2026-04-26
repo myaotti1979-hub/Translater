@@ -98,8 +98,10 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27j</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27n</span>
     <div style="display:flex;gap:6px">
+      <button onclick="saveTranscript()" title="トランスクリプト保存">💾</button>
+      <button onclick="document.getElementById('loadFile').click()" title="トランスクリプト読込→要約">📂</button>
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
       <button onclick="clearAll()" title="クリア">🗑</button>
@@ -166,6 +168,7 @@
     <div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>
   </div>
   <div class="scroll-anchor" id="scrollAnchor"></div>
+  <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadTranscript(event)">
 
   <!-- Summary Modal -->
   <div class="summary-overlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
@@ -201,6 +204,8 @@ const src = {
 
 const CHUNK_SEC = 5;
 const CHUNK_MS = CHUNK_SEC * 1000;
+const CHUNK_SEC_FAST = 5; // 議事録モードも5秒（認識精度優先）
+const CHUNK_MS_FAST = CHUNK_SEC_FAST * 1000;
 const SEAL_SILENCE = 1;     // seal after 1 silent chunk (5 seconds)
 
 // Transcript log
@@ -514,9 +519,9 @@ function handleChunk(sType, text, pair, preTranslation){
     }
   }
 
-  // 沈黙タイマーリセット
+  const sealMs=transMode==='ja-only'?CHUNK_MS_FAST:CHUNK_MS;
   clearTimeout(s.sealTimer);
-  s.sealTimer=setTimeout(()=>sealLive(sType), CHUNK_MS*2);
+  s.sealTimer=setTimeout(()=>sealLive(sType), sealMs*2);
 }
 
 function sealLive(sType,preTranslation){
@@ -571,6 +576,56 @@ function sealLive(sType,preTranslation){
 
 function flushPending(sType){
   sealLive(sType);
+}
+
+// ══════ Transcript Save / Load ══════
+function saveTranscript(){
+  if(transcript.length===0){showErr('保存するデータがありません');return}
+  const data=transcript.map(e=>({time:e.time,source:e.source,en:e.en,ja:e.ja}));
+  const json=JSON.stringify(data,null,2);
+  const date=new Date();
+  const fname=`transcript_${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}_${String(date.getHours()).padStart(2,'0')}${String(date.getMinutes()).padStart(2,'0')}.json`;
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=fname;a.click();
+  URL.revokeObjectURL(url);
+}
+
+function loadTranscript(event){
+  const file=event.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!Array.isArray(data)){showErr('無効なファイル形式です');return}
+      transcript=data;
+
+      // フィードに表示
+      const feed=document.getElementById('feed');
+      feed.innerHTML='';
+      data.forEach(entry=>{
+        const el=document.createElement('div');
+        el.className='block';
+        const icon=entry.source==='相手'?'🖥':'🎙';
+        el.innerHTML=`
+          <div class="block-head">
+            <span class="block-src">${icon} ${entry.source}</span>
+            <span class="block-time">${entry.time||''}</span>
+          </div>
+          <div class="block-ja">${escapeHtml(entry.ja||'')}</div>
+          <div class="block-en">${escapeHtml(entry.en||'')}</div>`;
+        feed.appendChild(el);
+      });
+      scrollDown();
+      showErr(`✅ ${data.length}件のトランスクリプトを読み込みました。📋で要約できます。`);
+    }catch(err){
+      showErr('ファイルの読み込みに失敗しました: '+err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value=''; // 同じファイルを再読込可能に
 }
 
 // ══════ Word Export ══════
@@ -799,7 +854,8 @@ function startCapture(stream, sType){
       doChunk();
     };
     rec.start();
-    const t=setTimeout(()=>{if(rec.state==='recording')rec.stop()},CHUNK_MS);
+    const chunkMs=transMode==='ja-only'?CHUNK_MS_FAST:CHUNK_MS;
+    const t=setTimeout(()=>{if(rec.state==='recording')rec.stop()},chunkMs);
     if(sType==='mic')micTimer=t;else pcTimer=t;
   }
   doChunk();
