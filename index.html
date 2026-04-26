@@ -98,7 +98,7 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27g</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27j</span>
     <div style="display:flex;gap:6px">
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
@@ -719,24 +719,62 @@ function startCapture(stream, sType){
         let text, pair, preTranslation=null;
 
         if(sttEngine==='1step'){
-          // 1-step: audio → transcription + translation in one API call
           const result=await gemini1step(blob);
+          if(!isOn) return; // 停止後のレスポンスは破棄
           text=(result.text||'').trim();
           if(!text||text.length<2){handleSilence(sType);doChunk();return}
           const detected=result.language==='ja'?'ja':'en';
           pair=getPair(detected);
           preTranslation=result.translation;
         } else {
-          // 2-step: audio → text, then text → translation
           const prevCtx=src[sType].lastText||'';
           const result = sttEngine==='gemini' ? await geminiTranscribe(blob,prevCtx) : await whisper(blob,prevCtx);
-          text=(result.text||'').trim();
+          if(!isOn) return;
+
+          // Whisper: no_speech_prob が高いセグメントを除去
+          if(result.segments&&result.segments.length>0){
+            const valid=result.segments.filter(seg=>(seg.no_speech_prob||0)<0.6);
+            if(valid.length===0){handleSilence(sType);doChunk();return}
+            text=valid.map(seg=>seg.text).join(' ').trim();
+          } else {
+            text=(result.text||'').trim();
+          }
+
           const detected=result.language==='ja'||result.language==='japanese'?'ja':'en';
           pair=getPair(detected);
         }
 
-        // Filter hallucinations on silence
-        if(!text||text.length<2||/^[\.\s…]+$/.test(text)||text==='ご視聴ありがとうございました'||text==='Thanks for watching!'||text.toLowerCase()==='thank you.'){
+        // ═══ 全モード共通ハルシネーション対策 ═══
+
+        // 前回と同じテキストの繰り返し
+        if(text&&src[sType].lastText&&text===src[sType].lastText){
+          handleSilence(sType);
+          doChunk();return;
+        }
+
+        // 音声が小さいのにテキストが長すぎる（ハルシネーションの兆候）
+        const charsPerKB=text.length/(blob.size/1024);
+        if(blob.size<2000&&text.length>80){
+          console.warn('Hallucination suspected: tiny audio, long text',{blobSize:blob.size,textLen:text.length});
+          handleSilence(sType);
+          doChunk();return;
+        }
+
+        // テキストパターンフィルター
+        const hallu=/^[\.\s…,，、。]+$/.test(text)
+          || text.length<3
+          || /thank(s| you)/i.test(text)
+          || /subscribe/i.test(text)
+          || /チャンネル登録/i.test(text)
+          || /ご視聴/i.test(text)
+          || /お疲れ様/i.test(text)
+          || /よろしくお願い/i.test(text)
+          || /ありがとうございました/i.test(text)
+          || /please like/i.test(text)
+          || /see you/i.test(text)
+          || /bye/i.test(text.toLowerCase())
+          || /^(music|applause|\[.*\]|\(.*\))$/i.test(text);
+        if(!text||hallu){
           handleSilence(sType);
           doChunk();return;
         }
