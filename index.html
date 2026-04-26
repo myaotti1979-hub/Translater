@@ -98,10 +98,10 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27n</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27p</span>
     <div style="display:flex;gap:6px">
-      <button onclick="saveTranscript()" title="トランスクリプト保存">💾</button>
-      <button onclick="document.getElementById('loadFile').click()" title="トランスクリプト読込→要約">📂</button>
+      <button onclick="saveTranscript()" title="トランスクリプト保存（JSON）">💾</button>
+      <button onclick="document.getElementById('loadFile').click()" title="ファイル読込→要約">📂</button>
       <button onclick="exportWord()" title="Word保存">📝</button>
       <button onclick="openSummary()" title="AI要約">📋</button>
       <button onclick="clearAll()" title="クリア">🗑</button>
@@ -168,7 +168,7 @@
     <div class="feed-empty" id="feedEmpty">🎙 開始すると翻訳がここに表示されます</div>
   </div>
   <div class="scroll-anchor" id="scrollAnchor"></div>
-  <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadTranscript(event)">
+  <input type="file" id="loadFile" accept=".json,.doc,.txt" style="display:none" onchange="loadTranscript(event)">
 
   <!-- Summary Modal -->
   <div class="summary-overlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
@@ -204,8 +204,14 @@ const src = {
 
 const CHUNK_SEC = 5;
 const CHUNK_MS = CHUNK_SEC * 1000;
-const CHUNK_SEC_FAST = 5; // 議事録モードも5秒（認識精度優先）
-const CHUNK_MS_FAST = CHUNK_SEC_FAST * 1000;
+
+// モード×エンジン別の最適チャンク長
+function getChunkMs(){
+  if(transMode==='ja-only') return 8000;  // 議事録: 精度最優先
+  if(sttEngine==='groq') return 4000;     // Groq+Gemini: 最速
+  if(sttEngine==='1step') return 4000;    // 1step: APIコール少ないので短くOK
+  return 5000;                            // 全部Gemini: レート制限考慮
+}
 const SEAL_SILENCE = 1;     // seal after 1 silent chunk (5 seconds)
 
 // Transcript log
@@ -519,9 +525,8 @@ function handleChunk(sType, text, pair, preTranslation){
     }
   }
 
-  const sealMs=transMode==='ja-only'?CHUNK_MS_FAST:CHUNK_MS;
   clearTimeout(s.sealTimer);
-  s.sealTimer=setTimeout(()=>sealLive(sType), sealMs*2);
+  s.sealTimer=setTimeout(()=>sealLive(sType), getChunkMs()*2);
 }
 
 function sealLive(sType,preTranslation){
@@ -595,11 +600,45 @@ function saveTranscript(){
 function loadTranscript(event){
   const file=event.target.files[0];
   if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      const data=JSON.parse(e.target.result);
-      if(!Array.isArray(data)){showErr('無効なファイル形式です');return}
+      let data=[];
+
+      if(ext==='json'){
+        data=JSON.parse(e.target.result);
+        if(!Array.isArray(data)){showErr('無効なJSON形式です');return}
+      } else if(ext==='doc'||ext==='html'){
+        // Word出力はHTML形式。テーブル行をパース
+        const parser=new DOMParser();
+        const doc=parser.parseFromString(e.target.result,'text/html');
+        const rows=doc.querySelectorAll('tr');
+        rows.forEach(row=>{
+          const cells=row.querySelectorAll('td');
+          if(cells.length>=3){
+            data.push({
+              time:cells[0].textContent.trim(),
+              source:cells[1].textContent.trim(),
+              en:cells.length>=4?cells[3].textContent.trim():cells[2].textContent.trim(),
+              ja:cells[2].textContent.trim()
+            });
+          }
+        });
+        if(data.length===0){
+          // テーブルがなければプレーンテキストとして処理
+          const text=doc.body.textContent||e.target.result;
+          data=[{time:'',source:'',en:text,ja:text}];
+        }
+      } else {
+        // テキストファイル: 行ごとにエントリ
+        const lines=e.target.result.split('\n').filter(l=>l.trim());
+        lines.forEach((line,i)=>{
+          data.push({time:'',source:'',en:line.trim(),ja:line.trim()});
+        });
+      }
+
+      if(data.length===0){showErr('データが見つかりません');return}
       transcript=data;
 
       // フィードに表示
@@ -611,7 +650,7 @@ function loadTranscript(event){
         const icon=entry.source==='相手'?'🖥':'🎙';
         el.innerHTML=`
           <div class="block-head">
-            <span class="block-src">${icon} ${entry.source}</span>
+            <span class="block-src">${icon} ${entry.source||'📂'}</span>
             <span class="block-time">${entry.time||''}</span>
           </div>
           <div class="block-ja">${escapeHtml(entry.ja||'')}</div>
@@ -619,13 +658,13 @@ function loadTranscript(event){
         feed.appendChild(el);
       });
       scrollDown();
-      showErr(`✅ ${data.length}件のトランスクリプトを読み込みました。📋で要約できます。`);
+      showErr(`✅ ${data.length}件読込完了。📋で要約できます`);
     }catch(err){
-      showErr('ファイルの読み込みに失敗しました: '+err.message);
+      showErr('読込失敗: '+err.message);
     }
   };
   reader.readAsText(file);
-  event.target.value=''; // 同じファイルを再読込可能に
+  event.target.value='';
 }
 
 // ══════ Word Export ══════
@@ -854,7 +893,7 @@ function startCapture(stream, sType){
       doChunk();
     };
     rec.start();
-    const chunkMs=transMode==='ja-only'?CHUNK_MS_FAST:CHUNK_MS;
+    const chunkMs=getChunkMs();
     const t=setTimeout(()=>{if(rec.state==='recording')rec.stop()},chunkMs);
     if(sType==='mic')micTimer=t;else pcTimer=t;
   }
