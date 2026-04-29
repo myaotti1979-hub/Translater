@@ -55,6 +55,8 @@
   /* Floating rec button */
   .float-rec{position:fixed;bottom:20px;right:20px;z-index:50;width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(99,102,241,0.5);transition:all .3s}
   .float-rec.on{background:linear-gradient(135deg,#dc2626,#f43f5e);box-shadow:0 2px 16px rgba(244,63,94,0.6)}
+  .gloss-tag{display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:3px 10px;font-size:11px;color:#fff}
+  .gloss-tag button{background:none;border:none;color:#f87171;font-size:13px;cursor:pointer;padding:0 0 0 2px;line-height:1}
 
   /* Feed */
   .feed{flex:1;overflow-y:auto;padding:8px 16px 80px;display:flex;flex-direction:column;gap:10px}
@@ -98,7 +100,7 @@
   <!-- Top bar -->
   <div class="top-bar">
     <h1>🌐 Meeting Translator</h1>
-    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27p</span>
+    <span style="font-size:12px;color:#ffffff;margin-left:8px">v2026-04-27u</span>
     <div style="display:flex;gap:6px">
       <button onclick="saveTranscript()" title="トランスクリプト保存（JSON）">💾</button>
       <button onclick="document.getElementById('loadFile').click()" title="ファイル読込→要約">📂</button>
@@ -137,6 +139,20 @@
 
     <label>参加者の名前（人名認識ヒント）</label>
     <textarea id="namesInput" placeholder="田中, Smith, 佐藤..." oninput="saveNames()"></textarea>
+
+    <label>単語帳</label>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <select id="glossarySelect" onchange="loadGlossary()" style="flex:1;background:#1e293b;color:#fff;border:1px solid rgba(99,102,241,0.3);border-radius:6px;padding:6px;font-size:12px">
+        <option value="">（なし）</option>
+      </select>
+      <button onclick="addGlossary()" style="background:#4f46e5;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer">＋新規</button>
+      <button onclick="deleteGlossary()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer">🗑</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:6px">
+      <input type="text" id="glossaryTermInput" placeholder="単語を入力..." style="flex:1;background:#1e293b;color:#fff;border:1px solid rgba(99,102,241,0.3);border-radius:6px;padding:6px 8px;font-size:12px" onkeydown="if(event.key==='Enter'){addTerm();event.preventDefault()}">
+      <button onclick="addTerm()" style="background:#4f46e5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">追加</button>
+    </div>
+    <div id="glossaryList" style="max-height:150px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:4px;padding:4px 0"></div>
 
     <label>音声ソース</label>
     <div class="src-row">
@@ -188,7 +204,7 @@
 
 <script>
 // ══════ State ══════
-let apiKey = '', geminiKey = '', nameHints = '', useMic = true, usePC = false;
+let apiKey = '', geminiKey = '', nameHints = '', glossary = '', useMic = true, usePC = false;
 let sttEngine = 'groq'; // 'groq' or 'gemini'
 let geminiModel = 'gemini-3-flash-preview';
 let transMode = 'auto'; // 'auto', 'en-ja', 'ja-en', 'ja-only'
@@ -232,6 +248,114 @@ const MODEL_INFO={
 function toggleSettings(){document.getElementById('settings').classList.toggle('show')}
 function saveKey(){apiKey=document.getElementById('keyInput').value.trim();sS('gk',apiKey);updateKeyUI()}
 function saveNames(){nameHints=document.getElementById('namesInput').value;sS('nh',nameHints)}
+
+// ══════ Multi-glossary management ══════
+function getGlossaries(){
+  try{return JSON.parse(sG('glossaries')||'{}');}catch{return {}}
+}
+function saveGlossaries(obj){sS('glossaries',JSON.stringify(obj))}
+
+function getTerms(){
+  const name=document.getElementById('glossarySelect').value;
+  if(!name) return [];
+  const gs=getGlossaries();
+  const raw=gs[name]||'';
+  if(Array.isArray(raw)) return raw;
+  // migrate comma string to array
+  return raw?raw.split(',').map(s=>s.trim()).filter(s=>s):[];
+}
+
+function saveTerms(terms){
+  const name=document.getElementById('glossarySelect').value;
+  if(!name) return;
+  const gs=getGlossaries();
+  gs[name]=terms;
+  saveGlossaries(gs);
+  glossary=terms.join(', ');
+}
+
+function renderTerms(){
+  const list=document.getElementById('glossaryList');
+  const terms=getTerms();
+  list.innerHTML='';
+  terms.forEach((term,i)=>{
+    const tag=document.createElement('span');
+    tag.className='gloss-tag';
+    tag.innerHTML=`${escapeHtml(term)}<button onclick="removeTerm(${i})">×</button>`;
+    list.appendChild(tag);
+  });
+  glossary=terms.join(', ');
+}
+
+function addTerm(){
+  const input=document.getElementById('glossaryTermInput');
+  const val=input.value.trim();
+  if(!val) return;
+  const name=document.getElementById('glossarySelect').value;
+  if(!name){showErr('先に単語帳を選択または作成してください');return}
+  const terms=getTerms();
+  // カンマ区切りで複数追加対応
+  const newTerms=val.split(',').map(s=>s.trim()).filter(s=>s);
+  newTerms.forEach(t=>{if(!terms.includes(t)) terms.push(t)});
+  saveTerms(terms);
+  renderTerms();
+  input.value='';
+  input.focus();
+}
+
+function removeTerm(idx){
+  const terms=getTerms();
+  terms.splice(idx,1);
+  saveTerms(terms);
+  renderTerms();
+}
+
+function refreshGlossarySelect(){
+  const sel=document.getElementById('glossarySelect');
+  const cur=sel.value||sG('glossaryCurrent')||'';
+  const gs=getGlossaries();
+  sel.innerHTML='<option value="">（なし）</option>';
+  Object.keys(gs).sort().forEach(name=>{
+    const opt=document.createElement('option');
+    opt.value=name;opt.textContent=name;
+    sel.appendChild(opt);
+  });
+  sel.value=cur;
+  loadGlossary();
+}
+
+function loadGlossary(){
+  const sel=document.getElementById('glossarySelect');
+  const name=sel.value;
+  sS('glossaryCurrent',name);
+  renderTerms();
+}
+
+function saveCurrentGlossary(){/* handled by addTerm/removeTerm */}
+
+function addGlossary(){
+  const name=prompt('単語帳の名前を入力してください：','');
+  if(!name||!name.trim()) return;
+  const gs=getGlossaries();
+  if(gs[name.trim()]&&!confirm('「'+name.trim()+'」は既に存在します。上書きしますか？')) return;
+  gs[name.trim()]=[];
+  saveGlossaries(gs);
+  refreshGlossarySelect();
+  document.getElementById('glossarySelect').value=name.trim();
+  loadGlossary();
+}
+
+function deleteGlossary(){
+  const sel=document.getElementById('glossarySelect');
+  const name=sel.value;
+  if(!name){showErr('削除する単語帳を選択してください');return}
+  if(!confirm('「'+name+'」を削除しますか？')) return;
+  const gs=getGlossaries();
+  delete gs[name];
+  saveGlossaries(gs);
+  sS('glossaryCurrent','');
+  refreshGlossarySelect();
+}
 function updateKeyUI(){
   const el=document.getElementById('keyStatus');
   if(!apiKey)el.innerHTML='<span class="key-ng">⚠ APIキーを入力してください</span>';
@@ -291,6 +415,15 @@ function updateModelUI(){
 // ══════ Init ══════
 (function(){
   apiKey = sG('gk')||''; geminiKey = sG('gemk')||''; nameHints = sG('nh')||'';
+  // Migrate old single glossary to multi-glossary
+  const oldGloss=sG('gloss');
+  if(oldGloss){
+    const gs=getGlossaries();
+    if(!gs['デフォルト']) gs['デフォルト']=oldGloss;
+    saveGlossaries(gs);
+    sS('glossaryCurrent','デフォルト');
+    localStorage.removeItem('gloss');
+  }
   sttEngine = sG('stteng')||'groq';
   geminiModel = sG('gmodel')||'gemini-3-flash-preview';
   if(!MODEL_INFO[geminiModel]) geminiModel='gemini-3-flash-preview';
@@ -299,6 +432,7 @@ function updateModelUI(){
   document.getElementById('keyInput').value = apiKey;
   document.getElementById('gemKeyInput').value = geminiKey;
   document.getElementById('namesInput').value = nameHints;
+  refreshGlossarySelect();
   updateKeyUI(); updateGemKeyUI(); updateEngineUI(); updateModelUI();
   setTransMode(transMode);
 })();
@@ -326,10 +460,11 @@ async function whisper(blob, prevContext){
   form.append('response_format','verbose_json');
   const srcLang=getSrcLang();
   if(srcLang) form.append('language',srcLang);
-  // Build prompt: previous context + name hints
+  // Build prompt: previous context + name hints + glossary
   let prompt='';
   if(prevContext) prompt+=prevContext.slice(-200)+' ';
-  if(nameHints.trim()) prompt+='Meeting participants: '+nameHints.trim();
+  if(nameHints.trim()) prompt+='Participants: '+nameHints.trim()+'. ';
+  if(glossary.trim()) prompt+='Key terms: '+glossary.trim()+'. ';
   if(prompt.trim()) form.append('prompt',prompt.trim());
   const r=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{
     method:'POST',headers:{'Authorization':'Bearer '+apiKey},body:form
@@ -349,7 +484,8 @@ async function geminiTranscribe(blob, prevContext){
   });
   const srcLang=getSrcLang();
   const langHint=srcLang?` The audio is in ${srcLang==='en'?'English':'Japanese'}.`:'';
-  const namePrompt=nameHints.trim()?` Participant names: ${nameHints.trim()}`:'';
+  const namePrompt=nameHints.trim()?` Participant names: ${nameHints.trim()}.`:'';
+  const glossPrompt=glossary.trim()?` Key terms: ${glossary.trim()}.`:'';
   const contextHint=prevContext?` Previous context: "${prevContext.slice(-200)}"`:'';
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,{
     method:'POST',
@@ -357,7 +493,7 @@ async function geminiTranscribe(blob, prevContext){
     body:JSON.stringify({
       contents:[{parts:[
         {inlineData:{mimeType:'audio/webm',data:base64}},
-        {text:`Transcribe this audio exactly as spoken. Output ONLY the transcription text, nothing else. If silent, output nothing.${langHint}${namePrompt}${contextHint}`}
+        {text:`Transcribe this audio exactly as spoken. Output ONLY the transcription text, nothing else. If silent, output nothing.${langHint}${namePrompt}${glossPrompt}${contextHint}`}
       ]}],
       generationConfig:{maxOutputTokens:500,temperature:0.1}
     })
@@ -383,6 +519,7 @@ async function gemini1step(blob){
   const toLang=srcLang==='ja'?'English':'Japanese';
   const langHint=srcLang?`The audio is in ${fromLang}. `:'';
   const namePrompt=nameHints.trim()?`Speaker names: ${nameHints.trim()}. `:'';
+  const glossPrompt=glossary.trim()?`Key terms: ${glossary.trim()}. `:'';
   const prevCtx=src.mic.context.slice(-2).join(' ');
   const ctxHint=prevCtx?`Previous context: "${prevCtx.slice(-150)}". `:'';
 
@@ -392,7 +529,7 @@ async function gemini1step(blob){
     body:JSON.stringify({
       contents:[{parts:[
         {inlineData:{mimeType:'audio/webm',data:base64}},
-        {text:`${langHint}${namePrompt}${ctxHint}Transcribe this audio and translate it to ${toLang}. Output exactly two lines:
+        {text:`${langHint}${namePrompt}${glossPrompt}${ctxHint}Transcribe this audio and translate it to ${toLang}. Output exactly two lines:
 ORIGINAL: (exact transcription)
 TRANSLATION: (faithful full translation)
 If silent, output nothing.`}
@@ -543,7 +680,7 @@ function sealLive(sType,preTranslation){
   const jaEl=s.el.querySelector('.block-ja');
   const ja=jaEl?jaEl.textContent:'';
   const idx=transcript.length;
-  transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:text,ja:ja});
+  transcript.push({time:timeStr(),source:sType==='pc'?'相手':'自分',en:transMode==='ja-only'?'':text,ja:ja});
 
   const sealedEl=s.el;
   if(transMode!=='ja-only'){
@@ -648,13 +785,14 @@ function loadTranscript(event){
         const el=document.createElement('div');
         el.className='block';
         const icon=entry.source==='相手'?'🖥':'🎙';
+        const isJaOnly=entry.en===entry.ja||!entry.en;
         el.innerHTML=`
           <div class="block-head">
             <span class="block-src">${icon} ${entry.source||'📂'}</span>
             <span class="block-time">${entry.time||''}</span>
           </div>
           <div class="block-ja">${escapeHtml(entry.ja||'')}</div>
-          <div class="block-en">${escapeHtml(entry.en||'')}</div>`;
+          <div class="block-en" ${isJaOnly?'style="display:none"':''}>${escapeHtml(entry.en||'')}</div>`;
         feed.appendChild(el);
       });
       scrollDown();
@@ -692,10 +830,11 @@ function exportWord(includeSummary){
 
   transcript.forEach(e=>{
     const srcLabel=e.source==='相手'?'🖥 相手':'🎙 自分';
+    const isJaOnly=e.en===e.ja||!e.en;
     body+=`<div style="margin-bottom:16px;padding:12px 16px;background:#fafafa;border-radius:8px;border-left:4px solid ${e.source==='相手'?'#818cf8':'#f472b6'};">`;
     body+=`<p style="margin:0 0 4px;font-size:11px;color:#888;"><b>${e.time}</b> — ${srcLabel}</p>`;
     body+=`<p style="margin:0 0 6px;font-size:15px;color:#111;line-height:1.7;"><b>${escapeHtml(e.ja||'')}</b></p>`;
-    body+=`<p style="margin:0;font-size:12px;color:#555;line-height:1.5;">${escapeHtml(e.en)}</p>`;
+    if(!isJaOnly) body+=`<p style="margin:0;font-size:12px;color:#555;line-height:1.5;">${escapeHtml(e.en)}</p>`;
     body+=`</div>`;
   });
 
@@ -723,11 +862,24 @@ async function summarize(mode){
   document.getElementById('btnSumAll').classList.toggle('active',mode==='all');
   document.getElementById('btnSumBlk').classList.toggle('active',mode==='blocks');
 
-  // Build transcript text
+  // Build transcript text — handle both translation and ja-only modes
   let text='';
   transcript.forEach(e=>{
-    text+=`[${e.time} ${e.source}] ${e.en}\n→ ${e.ja||''}\n\n`;
+    const original=e.en||e.ja||'';
+    const translated=e.ja||'';
+    if(original===translated||!e.en){
+      // 議事録モード（日本語のみ）
+      text+=`[${e.time||''} ${e.source||''}] ${translated}\n\n`;
+    } else {
+      // 翻訳モード（原文+翻訳）
+      text+=`[${e.time||''} ${e.source||''}] ${original}\n→ ${translated}\n\n`;
+    }
   });
+
+  if(!text.trim()){
+    document.getElementById('summaryText').textContent='⚠ トランスクリプトが空です';
+    return;
+  }
 
   const prompts={
     all:`以下は会議のトランスクリプトです。日本語で議事録として要約してください。
@@ -766,10 +918,13 @@ ${text}`
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         contents:[{parts:[{text:prompts[mode]}]}],
-        generationConfig:{maxOutputTokens:2000,temperature:0.2}
+        generationConfig:{maxOutputTokens:8000,temperature:0.2}
       })
     });
-    if(!r.ok) throw new Error(r.status);
+    if(!r.ok){
+      const errText=await r.text().catch(()=>'');
+      throw new Error(r.status+' '+errText.slice(0,200));
+    }
     const d=await r.json();
     const summary=d.candidates?.[0]?.content?.parts?.[0]?.text||'要約を生成できませんでした';
     lastSummary=summary;
